@@ -1,0 +1,14 @@
+node_modules
+.next
+.vercel
+.env
+.env.local
+.env*.local
+*.log
+.DS_Store
+.idea
+main.py
+coverage
+.claude/settings.local.json
+tsconfig.tsbuildinfo
+

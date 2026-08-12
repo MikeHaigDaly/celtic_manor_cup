@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  background: #F7F3EC;
+  color: #0E1A1A;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium
+           bg-ink text-cream hover:opacity-90 transition;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium
+           border border-ink/20 text-ink hover:bg-ink/5 transition;
+  }
+  .card {
+    @apply rounded-2xl bg-white shadow-card border border-ink/5;
+  }
+  .eyebrow {
+    @apply uppercase tracking-[0.18em] text-xs text-ink/60 font-medium;
+  }
+  .display {
+    @apply font-display tracking-tight;
+  }
+  .team-eu   { @apply text-eu; }
+  .team-usa  { @apply text-usa; }
+  .badge-eu  { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-eu/10 text-eu; }
+  .badge-usa { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-usa/10 text-usa; }
+  .stepper-btn {
+    @apply flex h-14 w-14 items-center justify-center rounded-full border border-ink/15
+           text-2xl font-semibold active:scale-95 transition select-none;
+  }
+}
+
