@@ -1,8 +1,6 @@
 "use server";
-// NOTE: Unlike src/app/actions/scores.ts, these actions intentionally do NOT
-// call requireScorer()/isScorer(). The Teams setup page is a fully open,
-// no-auth, single-device pre-tournament configuration step by design.
 import { revalidatePath } from "next/cache";
+import { requireTeamsEditor } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { TeamCode } from "@/lib/types";
 
@@ -126,6 +124,7 @@ async function assertNoScoresFor(matchIds: string[], table: "scores" | "scramble
 }
 
 export async function setPlayerTeam(input: { playerSlug: string; team: TeamCode | null }) {
+  requireTeamsEditor();
   const team = validateTeamOrNull(input.team);
   const ids = await resolveSetupIds();
   if (ids.teamsLocked) throw new Error("Teams are locked — unlock to reassign");
@@ -139,6 +138,7 @@ export async function setPlayerTeam(input: { playerSlug: string; team: TeamCode 
 }
 
 export async function resetTeamAssignments() {
+  requireTeamsEditor();
   const ids = await resolveSetupIds();
   if (ids.teamsLocked) throw new Error("Teams are locked — unlock to reassign");
   const { error } = await supabaseAdmin()
@@ -148,6 +148,7 @@ export async function resetTeamAssignments() {
 }
 
 export async function updatePlayerName(input: { playerSlug: string; name: string }) {
+  requireTeamsEditor();
   const name = validateName(input.name);
   const ids = await resolveSetupIds();
   const playerId = ids.playerIdBySlug.get(input.playerSlug);
@@ -158,6 +159,7 @@ export async function updatePlayerName(input: { playerSlug: string; name: string
 }
 
 export async function updatePlayerHandicap(input: { playerSlug: string; handicapIndex: number }) {
+  requireTeamsEditor();
   const handicapIndex = validateHandicap(input.handicapIndex);
   const ids = await resolveSetupIds();
   const playerId = ids.playerIdBySlug.get(input.playerSlug);
@@ -169,6 +171,7 @@ export async function updatePlayerHandicap(input: { playerSlug: string; handicap
 
 /** Set a single player's tee for a single day. Each golfer chooses independently. */
 export async function setPlayerTee(input: { playerSlug: string; dayNumber: 1 | 2 | 3; teeSlug: string }) {
+  requireTeamsEditor();
   const ids = await resolveSetupIds();
   const playerId = ids.playerIdBySlug.get(input.playerSlug);
   const round = ids.roundIdByDay.get(input.dayNumber);
@@ -185,6 +188,7 @@ export async function setPlayerTee(input: { playerSlug: string; dayNumber: 1 | 2
 }
 
 export async function lockTeams() {
+  requireTeamsEditor();
   const ids = await resolveSetupIds();
   const sb = supabaseAdmin();
   const { data: players, error } = await sb
@@ -242,6 +246,7 @@ export async function lockTeams() {
 }
 
 export async function unlockTeams() {
+  requireTeamsEditor();
   const ids = await resolveSetupIds();
   const sb = supabaseAdmin();
   // Deliberately does NOT clear match_players. reshapeMatchRow() (in
@@ -262,6 +267,7 @@ export async function setDayPairings(input: {
   team: TeamCode;
   pairs: [[string, string], [string, string]];
 }) {
+  requireTeamsEditor();
   const team = validateTeam(input.team);
   const ids = await resolveSetupIds();
   if (!ids.teamsLocked) throw new Error("Lock teams before setting pairings");
@@ -304,6 +310,7 @@ export async function setDayPairings(input: {
 }
 
 export async function setDaySingles(input: { pairs: { euPlayerSlug: string; usaPlayerSlug: string }[] }) {
+  requireTeamsEditor();
   const ids = await resolveSetupIds();
   if (!ids.teamsLocked) throw new Error("Lock teams before setting pairings");
   if (input.pairs.length !== 4) throw new Error("Expected exactly 4 singles matchups");

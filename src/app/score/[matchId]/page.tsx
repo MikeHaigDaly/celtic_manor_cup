@@ -1,6 +1,5 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { COURSES, SCRAMBLE_ALLOWANCE } from "@/config/tournament";
-import { isScorer } from "@/lib/auth";
 import { loadRawScores, buildScoringContext } from "@/lib/data";
 import { ScoreEntry } from "@/components/ScoreEntry";
 
@@ -9,8 +8,6 @@ export const dynamic = "force-dynamic";
 export default async function ScoreMatchPage({
   params, searchParams,
 }: { params: { matchId: string }; searchParams: { hole?: string } }) {
-  if (!isScorer()) redirect(`/score/login?next=/score/${params.matchId}`);
-
   const { individualScores, scrambleScores } = await loadRawScores();
   const ctx = await buildScoringContext(individualScores, scrambleScores);
   const match = ctx.matches.find((m) => m.id === params.matchId);

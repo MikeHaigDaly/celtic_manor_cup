@@ -39,9 +39,11 @@ Re-running `npm run seed` after changing `src/config/tournament.ts` is safe (ups
 NEXT_PUBLIC_SUPABASE_URL=       # https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon public key
 SUPABASE_SERVICE_ROLE_KEY=      # service-role — server only
-SCORER_PIN=1234                 # shared PIN for scorers
-SCORER_COOKIE_SECRET=change-me  # any long random string; signs the scorer cookie
+TEAMS_PIN=0609                  # shared password to edit teams/handicaps/pairings on /teams
+AUTH_COOKIE_SECRET=change-me    # any long random string; signs the teams auth cookie
 ```
+
+Score entry (`/score`) and `/admin` are open, no password — only `/teams` is gated.
 
 ## Tournament configuration
 

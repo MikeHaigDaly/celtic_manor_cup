@@ -1,6 +1,5 @@
 ﻿"use server";
 import { revalidatePath } from "next/cache";
-import { requireScorer } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { loadMatches } from "@/lib/tournamentData";
 import { loadRawScores, buildScoringContext } from "@/lib/data";
@@ -118,7 +117,6 @@ async function assertIndividualWriteAllowed(
   return { matchId, playerId, holeId };
 }
 export async function upsertIndividualScore(input: IndividualInput) {
-  requireScorer();
   validateHole(input.holeNumber);
   validateGross(input.gross);
   const ids = await resolveIds();
@@ -131,7 +129,6 @@ export async function upsertIndividualScore(input: IndividualInput) {
   revalidateForMatch(input.matchSlug, input.playerSlug);
 }
 export async function deleteIndividualScore(input: Omit<IndividualInput, "gross">) {
-  requireScorer();
   validateHole(input.holeNumber);
   const ids = await resolveIds();
   const { matchId, playerId, holeId } = await assertIndividualWriteAllowed(
@@ -166,7 +163,6 @@ async function assertScrambleWriteAllowed(
   return { matchId, sideId, holeId };
 }
 export async function upsertScrambleScore(input: ScrambleInput) {
-  requireScorer();
   validateHole(input.holeNumber);
   validateGross(input.gross);
   const ids = await resolveIds();
@@ -179,7 +175,6 @@ export async function upsertScrambleScore(input: ScrambleInput) {
   revalidateForMatch(input.matchSlug);
 }
 export async function deleteScrambleScore(input: Omit<ScrambleInput, "gross">) {
-  requireScorer();
   validateHole(input.holeNumber);
   const ids = await resolveIds();
   const { matchId, sideId, holeId } = await assertScrambleWriteAllowed(
@@ -190,7 +185,6 @@ export async function deleteScrambleScore(input: Omit<ScrambleInput, "gross">) {
   revalidateForMatch(input.matchSlug);
 }
 export async function setHoleLock(input: { matchSlug: string; holeNumber: number; locked: boolean }) {
-  requireScorer();
   validateHole(input.holeNumber);
   const ids = await resolveIds();
   const matchId = ids.matchIdBySlug.get(input.matchSlug);
@@ -213,7 +207,6 @@ export async function setHoleLock(input: { matchSlug: string; holeNumber: number
   revalidateForMatch(input.matchSlug);
 }
 export async function setMatchSigned(input: { matchSlug: string; signed: boolean }) {
-  requireScorer();
   const ids = await resolveIds();
   const matchId = ids.matchIdBySlug.get(input.matchSlug);
   if (!matchId) throw new Error("Unknown match");

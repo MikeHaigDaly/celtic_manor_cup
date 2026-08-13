@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { isScorer } from "@/lib/auth";
 import { TOURNAMENT, SCRAMBLE_ALLOWANCE, courseById } from "@/config/tournament";
 import {
   loadPlayers, loadMatches, loadRoundSettings, loadPlayerTeeSelections, teeForPlayerFromSelections,
@@ -13,8 +11,6 @@ import { day2PairHandicaps, individualMatchHandicaps } from "@/lib/scoring/deriv
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  if (!isScorer()) redirect("/score/login?next=/admin");
-
   const [players, matches, roundSettings, teeSelections] = await Promise.all([
     loadPlayers(), loadMatches(), loadRoundSettings(), loadPlayerTeeSelections(),
   ]);
