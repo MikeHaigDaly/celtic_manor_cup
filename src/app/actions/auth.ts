@@ -6,7 +6,7 @@ export async function scorerLoginAction(formData: FormData) {
   const pin = String(formData.get("pin") ?? "");
   const ok = loginWithPin(pin);
   if (!ok) redirect("/score/login?error=1");
-  const next = String(formData.get("next") ?? "/score");
+  const next = String(formData.get("next") ?? "/");
   redirect(next);
 }
 

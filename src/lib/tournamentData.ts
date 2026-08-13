@@ -40,16 +40,20 @@ export const loadPlayers = cache(async (): Promise<Player[]> => {
     .select("slug, name, handicap_index, photo_url, sort_order, teams:team_id(code)")
     .order("sort_order");
   if (error) throw error;
-  return (data ?? []).map((r: any): Player => ({
-    id: r.slug,
-    name: r.name,
+  return (data ?? []).map((r: any): Player => {
     // teams:team_id(...) comes back as an object for a to-one FK, but the
     // generated types treat it as possibly-array — normalize defensively.
-    team: (Array.isArray(r.teams) ? r.teams[0] : r.teams).code as TeamCode,
-    // numeric(4,1) columns come back from PostgREST as strings.
-    handicapIndex: Number(r.handicap_index),
-    photoUrl: r.photo_url ?? undefined,
-  }));
+    // team_id (and therefore this join) is null until assigned on /teams.
+    const teamRow = Array.isArray(r.teams) ? r.teams[0] : r.teams;
+    return {
+      id: r.slug,
+      name: r.name,
+      team: (teamRow?.code ?? null) as TeamCode | null,
+      // numeric(4,1) columns come back from PostgREST as strings.
+      handicapIndex: Number(r.handicap_index),
+      photoUrl: r.photo_url ?? undefined,
+    };
+  });
 });
 
 export const loadRoundSettings = cache(async (): Promise<RoundSetting[]> => {

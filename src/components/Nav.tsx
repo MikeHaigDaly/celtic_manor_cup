@@ -5,7 +5,6 @@ import clsx from "clsx";
 
 const items = [
   { href: "/",        label: "Leaderboard" },
-  { href: "/score",   label: "Score"       },
   { href: "/players", label: "Players"     },
   { href: "/teams",   label: "Teams"       },
 ];
@@ -14,7 +13,7 @@ export function BottomNav() {
   const path = usePathname();
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-ink/10 bg-cream/90 backdrop-blur md:hidden">
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-3">
         {items.map((it) => {
           const active = path === it.href || (it.href !== "/" && path.startsWith(it.href));
           return (

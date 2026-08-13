@@ -19,30 +19,29 @@ const s = (matchId: string, playerId: string, hole: number, gross: number): Indi
 // ─────────────────────────────────────────────────────────────────────────────
 //  DAY 1 — Best/Worst/Both with match-relative handicap
 // ─────────────────────────────────────────────────────────────────────────────
-describe("Day 1 — match-relative handicap 8/12/14/18 → 0/4/6/10", () => {
+describe("Day 1 — CH-based handicap, applied directly per player (8/12/14/18)", () => {
   const match: Day1Match = {
     id: "d1", dayNumber: 1, format: "DAY1_PAR_PAIRS", matchNumber: 1, courseId: "c",
     euPlayers: ["mike", "partner"], usaPlayers: ["lance", "rob"],
   };
   const players: Player[] = [
-    P("mike",    "EU",  8),   // low
+    P("mike",    "EU",  8),
     P("partner", "EU",  12),
     P("lance",   "USA", 14),
     P("rob",     "USA", 18),
   ];
 
-  it("allocates 0/4/6/10 match strokes", () => {
+  it("each player's match strokes equal their own Course Handicap — no subtract-the-lowest", () => {
     const map = individualMatchHandicaps(match, players, neutralTee);
-    expect(map.get("mike")!.matchStrokes).toBe(0);
-    expect(map.get("partner")!.matchStrokes).toBe(4);
-    expect(map.get("lance")!.matchStrokes).toBe(6);
-    expect(map.get("rob")!.matchStrokes).toBe(10);
+    expect(map.get("mike")!.matchStrokes).toBe(8);
+    expect(map.get("partner")!.matchStrokes).toBe(12);
+    expect(map.get("lance")!.matchStrokes).toBe(14);
+    expect(map.get("rob")!.matchStrokes).toBe(18);
   });
 
-  it("partner (4 strokes) receives 1 stroke on SI 1..4 only", () => {
-    // Hole 1 SI 1 par 4 → partner gross 5 → net 4. Mike gross 6 → net 6.
-    // EU best = 4. USA: lance 5 net (6-1=5)... let's simplify: give USA very high scores
-    // so EU wins hole clearly.
+  it("mike (CH 8) receives 1 stroke on SI 1..8 only", () => {
+    // Hole 1 SI 1 par 4 → mike gross 6 → net 5 (stroke, SI1<=8). Partner gross 5 → net 5 (CH12, SI1<=12).
+    // EU best = 5. USA: lance/rob score high so EU wins hole clearly.
     const scores: IndividualScore[] = [
       s("d1", "mike", 1, 6),  s("d1", "partner", 1, 5),
       s("d1", "lance", 1, 9), s("d1", "rob", 1, 9),
@@ -53,18 +52,18 @@ describe("Day 1 — match-relative handicap 8/12/14/18 → 0/4/6/10", () => {
     expect(state.holeResults[0].winner).toBe("EU");
   });
 
-  it("SI 5 hole: partner receives NO extra stroke (partner has 4 match strokes → SI 1..4)", () => {
-    // Hole 5 SI 5 par 4. Partner gross 5 → net 5 (no stroke). Mike 6 → net 6.
-    // EU best = 5. USA lance gross 5 net = 5-1 = 4 (lance has 6 match strokes → SI 1..6).
+  it("SI 9 hole: mike (CH 8) gets no stroke, lance (CH 14) does", () => {
+    // Hole 9 SI 9. Mike gross 5 → net 5 (no stroke, SI9>8). Partner gross 9 → net 8 (stroke, SI9<=12).
+    // EU best = 5. Lance gross 5 → net 4 (stroke, SI9<=14). Rob gross 9 → net 8 (stroke, SI9<=18).
     // USA best = 4. USA wins.
     const scores: IndividualScore[] = [
-      s("d1", "mike", 5, 6), s("d1", "partner", 5, 5),
-      s("d1", "lance", 5, 5), s("d1", "rob", 5, 9),
+      s("d1", "mike", 9, 5), s("d1", "partner", 9, 9),
+      s("d1", "lance", 9, 5), s("d1", "rob", 9, 9),
     ];
     const state = deriveMatchState({
       match, course, players, individualScores: scores, scrambleScores: [], tee: neutralTee,
     });
-    expect(state.holeResults[4].winner).toBe("USA");
+    expect(state.holeResults[8].winner).toBe("USA");
   });
 
   it("does NOT resolve until all four scores exist", () => {
@@ -139,9 +138,9 @@ describe("Day 1 — match-relative handicap 8/12/14/18 → 0/4/6/10", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  DAY 2 — Scramble with 35/15 pair PH then match-relative
+//  DAY 2 — Scramble: 35/15 pair PH, applied directly (same convention as Day 1/3)
 // ─────────────────────────────────────────────────────────────────────────────
-describe("Day 2 — pair PH auto + match-relative", () => {
+describe("Day 2 — pair PH auto, applied directly (no match-relative adjustment)", () => {
   const match: Day2Match = {
     id: "d2", dayNumber: 2, format: "DAY2_SCRAMBLE", matchNumber: 1, courseId: "c",
     euPlayers: ["a", "b"], usaPlayers: ["c", "d"],
@@ -157,8 +156,6 @@ describe("Day 2 — pair PH auto + match-relative", () => {
     const info = day2PairHandicaps(match, players, neutralTee);
     expect(info.euPH).toBe(5);   // 0.35*8 + 0.15*12 = 4.6 → 5
     expect(info.usaPH).toBe(5);  // 0.35*6 + 0.15*22 = 5.4 → 5
-    expect(info.euMatch).toBe(0);
-    expect(info.usaMatch).toBe(0);
   });
 
   it("35% low + 15% high: 8 + 22 → 6 (from spec example 6.1 → 6)", () => {
@@ -166,32 +163,28 @@ describe("Day 2 — pair PH auto + match-relative", () => {
     const info = day2PairHandicaps(match, p2, neutralTee);
     expect(info.euPH).toBe(6);
     expect(info.usaPH).toBe(0);
-    expect(info.euMatch).toBe(6);
-    expect(info.usaMatch).toBe(0);
   });
 
-  it("Pair PH 6 vs 10 → match 0 vs 4 (higher pair receives strokes only on SI 1..4)", () => {
+  it("Pair PH 6 vs 10: each side strokes off its own PH — SI 9 only USA strokes, SI 15 neither does", () => {
     // Override to force PH 6 & 10 cleanly.
     const m: Day2Match = { ...match, euPairHandicap: 6, usaPairHandicap: 10 };
     const info = day2PairHandicaps(m, players, neutralTee);
     expect(info.euPH).toBe(6);
     expect(info.usaPH).toBe(10);
-    expect(info.euMatch).toBe(0);
-    expect(info.usaMatch).toBe(4);
 
-    // Both sides gross 4. On SI 1 (hole 1): USA net 4-1=3, EU net 4 → USA wins.
-    // On SI 5 (hole 5):    USA net 4,      EU net 4 → HALVED.
+    // Both sides gross 4. Hole 9 (SI 9): EU (PH6) no stroke → net 4; USA (PH10)
+    // strokes → net 3 → USA wins. Hole 15 (SI 15): neither PH reaches → HALVED.
     const scr: ScrambleScore[] = [
-      { matchId: "d2", side: "EU",  holeNumber: 1, gross: 4 },
-      { matchId: "d2", side: "USA", holeNumber: 1, gross: 4 },
-      { matchId: "d2", side: "EU",  holeNumber: 5, gross: 4 },
-      { matchId: "d2", side: "USA", holeNumber: 5, gross: 4 },
+      { matchId: "d2", side: "EU",  holeNumber: 9, gross: 4 },
+      { matchId: "d2", side: "USA", holeNumber: 9, gross: 4 },
+      { matchId: "d2", side: "EU",  holeNumber: 15, gross: 4 },
+      { matchId: "d2", side: "USA", holeNumber: 15, gross: 4 },
     ];
     const state = deriveMatchState({
       match: m, course, players, individualScores: [], scrambleScores: scr, tee: neutralTee,
     });
-    expect(state.holeResults[0].winner).toBe("USA");
-    expect(state.holeResults[4].winner).toBe("HALVED");
+    expect(state.holeResults[8].winner).toBe("USA");
+    expect(state.holeResults[14].winner).toBe("HALVED");
   });
 
   it("Gross view removes handicap effect", () => {
@@ -221,31 +214,31 @@ describe("Day 2 — pair PH auto + match-relative", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 //  DAY 3 — Singles with match-relative allocation
 // ─────────────────────────────────────────────────────────────────────────────
-describe("Day 3 — singles match-relative (CH 8 vs 14 → 0/6)", () => {
+describe("Day 3 — singles, each player's own CH applied directly (8 vs 14)", () => {
   const match: Day3Match = {
     id: "d3", dayNumber: 3, format: "DAY3_SINGLES", matchNumber: 1, courseId: "c",
     euPlayer: "eu", usaPlayer: "us",
   };
   const players: Player[] = [ P("eu","EU",8), P("us","USA",14) ];
 
-  it("EU plays off 0, USA plays off 6", () => {
+  it("EU's match strokes = their own CH (8), USA's = their own CH (14)", () => {
     const map = individualMatchHandicaps(match, players, neutralTee);
-    expect(map.get("eu")!.matchStrokes).toBe(0);
-    expect(map.get("us")!.matchStrokes).toBe(6);
+    expect(map.get("eu")!.matchStrokes).toBe(8);
+    expect(map.get("us")!.matchStrokes).toBe(14);
   });
 
-  it("USA receives a stroke on SI 1..6 only — same gross halves outside that range", () => {
-    // Hole 1 SI 1 gross 5 each → USA net 4, EU net 5 → USA wins.
-    // Hole 7 SI 7 gross 5 each → both net 5 → HALVED.
+  it("SI 9: only USA (CH 14) strokes, EU (CH 8) doesn't — SI 15: neither strokes", () => {
+    // Hole 9 SI 9 gross 5 each → EU net 5 (no stroke, SI9>8), USA net 4 (stroke, SI9<=14) → USA wins.
+    // Hole 15 SI 15 gross 5 each → neither strokes (SI15 > both CHs) → HALVED.
     const scores: IndividualScore[] = [
-      s("d3","eu",1,5), s("d3","us",1,5),
-      s("d3","eu",7,5), s("d3","us",7,5),
+      s("d3","eu",9,5), s("d3","us",9,5),
+      s("d3","eu",15,5), s("d3","us",15,5),
     ];
     const state = deriveMatchState({
       match, course, players, individualScores: scores, scrambleScores: [], tee: neutralTee,
     });
-    expect(state.holeResults[0].winner).toBe("USA");
-    expect(state.holeResults[6].winner).toBe("HALVED");
+    expect(state.holeResults[8].winner).toBe("USA");
+    expect(state.holeResults[14].winner).toBe("HALVED");
   });
 
   it("changing an earlier score recomputes match state", () => {
@@ -298,9 +291,10 @@ describe("Tee change actually changes handicap strokes", () => {
       mike: teeA, partner: teeB, lance: teeA, rob: teeA,
     };
     const map = individualMatchHandicaps(match, players, (id) => teeByPlayer[id] ?? null);
-    // mike (teeA, HI10) → CH 10 (lowest); partner (teeB, HI10) → CH higher than 10.
-    expect(map.get("mike")!.matchStrokes).toBe(0);
-    expect(map.get("partner")!.matchStrokes).toBeGreaterThan(0);
+    // mike (teeA, HI10) → CH 10; partner (teeB, HI10) → higher CH than mike,
+    // since match strokes are each player's own CH — not relative to the group.
+    expect(map.get("mike")!.matchStrokes).toBe(10);
+    expect(map.get("partner")!.matchStrokes).toBeGreaterThan(map.get("mike")!.matchStrokes);
   });
 
   it("per-player tee resolver: Day 2 pair blend uses each partner's own tee", () => {

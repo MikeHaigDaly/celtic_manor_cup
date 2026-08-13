@@ -16,17 +16,19 @@ export const TOURNAMENT = {
   year: 2026, // TODO: set the actual tournament year
 };
 
-// ── Players (fixed list) ──────────────────────────────────────────────────
-// TODO: confirm team assignments and enter each golfer's official HI.
+// ── Players (fixed list) ────────────────────────────────────────────────
+// `team` here only seeds a *new* player row (as unassigned — see seed.ts,
+// which never overwrites an existing player's team/name/handicap, since
+// those are live-edited from the /teams setup board from then on).
 export const PLAYERS: Player[] = [
-  { id: "mike-daly",         name: "Mike Daly",         team: "EU",  handicapIndex: 12.0 },
-  { id: "lance-horstmann",   name: "Lance Horstmann",   team: "EU",  handicapIndex: 10.0 },
-  { id: "michael-barnard",   name: "Michael Barnard",   team: "EU",  handicapIndex: 14.0 },
-  { id: "chris-todd",        name: "Chris Todd",        team: "EU",  handicapIndex: 16.0 },
-  { id: "jake-cowper",       name: "Jake Cowper",       team: "USA", handicapIndex:  8.0 },
-  { id: "rob-paul",          name: "Rob Paul",          team: "USA", handicapIndex: 18.0 },
-  { id: "alex-summerfield",  name: "Alex Summerfield",  team: "USA", handicapIndex: 11.0 },
-  { id: "andrew-grant",      name: "Andrew Grant",      team: "USA", handicapIndex: 20.0 },
+  { id: "mike-daly",         name: "Daly",   team: null, handicapIndex: 12.0 },
+  { id: "lance-horstmann",   name: "Lance",  team: null, handicapIndex: 10.0 },
+  { id: "michael-barnard",   name: "Barney", team: null, handicapIndex: 14.0 },
+  { id: "chris-todd",        name: "Todd",   team: null, handicapIndex: 16.0 },
+  { id: "jake-cowper",       name: "Jake",   team: null, handicapIndex:  8.0 },
+  { id: "rob-paul",          name: "Rob",    team: null, handicapIndex: 18.0 },
+  { id: "alex-summerfield",  name: "Alex",   team: null, handicapIndex: 11.0 },
+  { id: "andrew-grant",      name: "Andy",   team: null, handicapIndex: 20.0 },
 ];
 
 const H = (n: number, par: 3 | 4 | 5, si: number): Hole => ({ number: n, par, strokeIndex: si });
@@ -111,7 +113,8 @@ export const ROUND_SETTINGS: RoundSetting[] = [
   { dayNumber: 3, courseId: "roman-road",  selectedTeeId: "roman-road-yellow"  },
 ];
 
-// Handicap allowances (% of CH → PH). Match-play then subtracts the lowest.
+// Handicap allowances (% of CH → PH). Day 1/3 strokes are each player's own
+// PH applied directly by hole SI (no match-relative subtract-the-lowest).
 export const HANDICAP_ALLOWANCES = { DAY1_PAR_PAIRS: 100, DAY3_SINGLES: 100 };
 
 // 2-man scramble Playing Handicap: 35% low + 15% high (then match-relative).

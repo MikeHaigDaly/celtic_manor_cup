@@ -47,6 +47,8 @@ interface Ctx {
   scrambleAllowance?: ScrambleAllowance;
   /** Handicap allowance % applied to CH → PH (default 100). */
   allowancePercent?: number;
+  /** Locked hole numbers per match id — see `DeriveInput.lockedHoles`. */
+  lockedHolesByMatch?: Map<string, Set<number>>;
 }
 
 const courseFor = (courses: Course[], id: string) => {
@@ -71,6 +73,7 @@ export function deriveAllMatchStates(ctx: Ctx, mode: ScoringMode = "NET"): Map<s
         tee: (playerId: string) => ctx.getTeeForMatch(m, playerId),
         allowancePercent: ctx.allowancePercent,
         scrambleAllowance: ctx.scrambleAllowance,
+        lockedHoles: ctx.lockedHolesByMatch?.get(m.id) ?? null,
       }),
     );
   }
@@ -150,8 +153,14 @@ export function calculatePlayerStats(playerId: string, ctx: Ctx): PlayerStats {
     if (!c) continue;
     const hole = c.holes.find((h) => h.number === s.holeNumber);
     if (!hole) continue;
-    const state = states.get(m.id)!;
-    if (hole.number > state.throughHole && state.finished) continue;
+    // Individual stroke stats count any *locked* hole, independent of
+    // whether the team match already closed out early (e.g. 3&2) — the
+    // group keeps playing the rest of the round even once the match itself
+    // is decided, and those holes should still count for personal stats.
+    const locked = ctx.lockedHolesByMatch
+      ? (ctx.lockedHolesByMatch.get(m.id)?.has(hole.number) ?? false)
+      : true;
+    if (!locked) continue;
 
     const tee = ctx.getTeeForMatch(m, player.id);
     const ch = courseHandicapFor(player, tee);

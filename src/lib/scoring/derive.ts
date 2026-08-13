@@ -19,7 +19,6 @@ import {
   calculateCourseHandicap,
   calculatePlayingHandicap,
   calculateScramblePlayingHandicap,
-  matchStrokeAllocation,
 } from "./courseHandicap";
 
 interface DeriveInput {
@@ -35,6 +34,13 @@ interface DeriveInput {
   allowancePercent?: number;
   /** Configurable scramble allowance for Day 2 (default 35/15). */
   scrambleAllowance?: ScrambleAllowance;
+  /**
+   * Holes locked for this match. When supplied, any hole NOT in this set is
+   * forced to PENDING regardless of entered scores — a hole only officially
+   * counts (and the match can only progress past it) once it's locked.
+   * Omit/null to not gate on locking (e.g. tests, or callers with no lock data).
+   */
+  lockedHoles?: Set<number> | null;
 }
 
 const findPlayer = (players: Player[], id: string): Player => {
@@ -85,8 +91,10 @@ export function resolveTeeFor(tee: TeeResolver | undefined, playerId: string): T
 }
 
 /**
- * Match-play strokes-received map for the players in a match, using the
- * standard match-play "subtract the lowest Playing Handicap" convention.
+ * Strokes-received map for the players in a match — each player's own
+ * Playing Handicap (Course Handicap × allowance) applied directly against
+ * hole Stroke Index, with no match-relative "subtract the lowest" step.
+ * Simpler to follow scorer-side than a relative allowance.
  *
  * For Day 1 (2 vs 2) all four players are considered together.
  * For Day 3 singles the two players are considered together.
@@ -101,14 +109,12 @@ function computeMatchStrokesForMatch(
     match.format === "DAY3_SINGLES"
       ? [match.euPlayer, match.usaPlayer]
       : [...match.euPlayers, ...match.usaPlayers];
-  const playingHandicaps = ids.map((id) => {
+  const out = new Map<string, number>();
+  ids.forEach((id) => {
     const p = findPlayer(players, id);
     const ch = courseHandicapFor(p, resolveTeeFor(tee, id));
-    return calculatePlayingHandicap(ch, allowancePercent);
+    out.set(id, Math.max(0, calculatePlayingHandicap(ch, allowancePercent)));
   });
-  const strokes = matchStrokeAllocation(playingHandicaps);
-  const out = new Map<string, number>();
-  ids.forEach((id, i) => out.set(id, strokes[i]));
   return out;
 }
 
@@ -138,8 +144,9 @@ function day2SidePlayingHandicap(
  *
  * Handicap pipeline (NET mode):
  *   Handicap Index → Course Handicap (via selected tee)
- *     → Playing Handicap (via allowance %)
- *     → match-relative strokes received (subtract-lowest)
+ *     → Playing Handicap (via allowance %; Day 2 blends the pair's two CHs
+ *       35/15 low/high — see day2SidePlayingHandicap) — applied directly,
+ *       no match-relative adjustment, same convention for all three days
  *     → per-hole strokes via SI
  *     → net score → hole/match comparison.
  */
@@ -153,6 +160,7 @@ export function deriveMatchState({
   tee = null,
   allowancePercent = 100,
   scrambleAllowance = { low: 0.35, high: 0.15 },
+  lockedHoles = null,
 }: DeriveInput): MatchState {
   const holes = [...course.holes].sort((a, b) => a.number - b.number);
 
@@ -162,16 +170,13 @@ export function deriveMatchState({
       ? new Map<string, number>()
       : computeMatchStrokesForMatch(match, players, tee, allowancePercent);
 
-  // Precompute Day 2 pair Playing Handicaps AND their match-relative strokes:
-  // the lower pair plays off ZERO, the higher pair receives 100% of the diff.
-  let day2EuMatchPH = 0;
-  let day2UsaMatchPH = 0;
+  // Precompute Day 2 pair Playing Handicaps — applied directly by hole SI,
+  // same convention as Day 1/3 (no match-relative subtract-the-lower-pair).
+  let day2EuPH = 0;
+  let day2UsaPH = 0;
   if (match.format === "DAY2_SCRAMBLE") {
-    const euPH  = day2SidePlayingHandicap("EU",  match, players, tee, scrambleAllowance);
-    const usaPH = day2SidePlayingHandicap("USA", match, players, tee, scrambleAllowance);
-    const [euRel, usaRel] = matchStrokeAllocation([euPH, usaPH]);
-    day2EuMatchPH = euRel;
-    day2UsaMatchPH = usaRel;
+    day2EuPH  = day2SidePlayingHandicap("EU",  match, players, tee, scrambleAllowance);
+    day2UsaPH = day2SidePlayingHandicap("USA", match, players, tee, scrambleAllowance);
   }
 
   const results: HoleResult[] = holes.map((hole): HoleResult => {
@@ -198,13 +203,13 @@ export function deriveMatchState({
       euScore = calculateDay2SideNet(
         hole,
         scrambleFor(scrambleScores, match.id, "EU", hole.number),
-        day2EuMatchPH,
+        day2EuPH,
         mode,
       );
       usaScore = calculateDay2SideNet(
         hole,
         scrambleFor(scrambleScores, match.id, "USA", hole.number),
-        day2UsaMatchPH,
+        day2UsaPH,
         mode,
       );
     } else if (match.format === "DAY3_SINGLES") {
@@ -222,11 +227,12 @@ export function deriveMatchState({
       );
     }
 
+    const isLocked = lockedHoles == null || lockedHoles.has(hole.number);
     return {
       hole,
       euScore,
       usaScore,
-      winner: calculateHoleWinner(euScore, usaScore),
+      winner: isLocked ? calculateHoleWinner(euScore, usaScore) : "PENDING",
       detail,
     };
   });
@@ -253,20 +259,19 @@ export function findHole(course: Course, holeNumber: number): Hole {
 }
 
 /**
- * UI helper — for a Day 2 match, return each side's raw Pair Playing Handicap
- * and their match-relative stroke count (lower plays off zero).
+ * UI helper — for a Day 2 match, return each side's Pair Playing Handicap
+ * (applied directly by hole SI — same convention as Day 1/3's Course Handicap).
  */
 export function day2PairHandicaps(
   match: Extract<AnyMatch, { format: "DAY2_SCRAMBLE" }>,
   players: Player[],
   tee: TeeResolver | undefined,
   scrambleAllowance: ScrambleAllowance = { low: 0.35, high: 0.15 },
-): { euPH: number; usaPH: number; euMatch: number; usaMatch: number; euOverride: boolean; usaOverride: boolean } {
+): { euPH: number; usaPH: number; euOverride: boolean; usaOverride: boolean } {
   const euPH  = day2SidePlayingHandicap("EU",  match, players, tee, scrambleAllowance);
   const usaPH = day2SidePlayingHandicap("USA", match, players, tee, scrambleAllowance);
-  const [euMatch, usaMatch] = matchStrokeAllocation([euPH, usaPH]);
   return {
-    euPH, usaPH, euMatch, usaMatch,
+    euPH, usaPH,
     euOverride:  match.euPairHandicap  != null,
     usaOverride: match.usaPairHandicap != null,
   };
@@ -274,7 +279,8 @@ export function day2PairHandicaps(
 
 /**
  * UI helper — for a Day 1 / Day 3 match, return each player's Course Handicap
- * and match-relative match strokes.
+ * and the strokes they receive (their own Playing Handicap, applied directly
+ * by hole Stroke Index — no match-relative adjustment).
  */
 export function individualMatchHandicaps(
   match: AnyMatch,
@@ -288,10 +294,9 @@ export function individualMatchHandicaps(
       ? [match.euPlayer, match.usaPlayer]
       : [...match.euPlayers, ...match.usaPlayers];
   const chs = ids.map((id) => courseHandicapFor(findPlayer(players, id), resolveTeeFor(tee, id)));
-  const phs = chs.map((ch) => calculatePlayingHandicap(ch, allowancePercent));
-  const rel = matchStrokeAllocation(phs);
+  const phs = chs.map((ch) => Math.max(0, calculatePlayingHandicap(ch, allowancePercent)));
   const out = new Map<string, { ch: number; ph: number; matchStrokes: number }>();
-  ids.forEach((id, i) => out.set(id, { ch: chs[i], ph: phs[i], matchStrokes: rel[i] }));
+  ids.forEach((id, i) => out.set(id, { ch: chs[i], ph: phs[i], matchStrokes: phs[i] }));
   return out;
 }
 

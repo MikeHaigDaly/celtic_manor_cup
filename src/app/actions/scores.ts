@@ -3,6 +3,9 @@ import { revalidatePath } from "next/cache";
 import { requireScorer } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { loadMatches } from "@/lib/tournamentData";
+import { loadRawScores, buildScoringContext } from "@/lib/data";
+import { deriveMatchState } from "@/lib/scoring/derive";
+import { COURSES } from "@/config/tournament";
 import type { AnyMatch } from "@/lib/types";
 interface ResolvedIds {
   matchIdBySlug: Map<string, string>;
@@ -10,18 +13,24 @@ interface ResolvedIds {
   sideIdBy: Map<string, string>;
   holeIdBy: Map<string, string>;
   playersInMatch: Map<string, Set<string>>;
+  lockedHolesByMatch: Map<string, Set<number>>;
+  signedMatchIds: Set<string>;
 }
 async function resolveIds(): Promise<ResolvedIds> {
   const sb = supabaseAdmin();
-  const [{ data: matches }, { data: players }, { data: sides }, { data: holes }, { data: mp }] =
+  const [{ data: matches }, { data: players }, { data: sides }, { data: holes }, { data: mp }, { data: locks }] =
     await Promise.all([
-      sb.from("matches").select("id, slug"),
+      sb.from("matches").select("id, slug, signed_off"),
       sb.from("players").select("id, slug"),
       sb.from("match_sides").select("id, match_id, side_code"),
       sb.from("holes").select("id, hole_number, courses:course_id(slug)"),
       sb.from("match_players").select("match_id, player_id"),
+      sb.from("match_hole_locks").select("match_id, hole_number"),
     ]);
   const matchIdBySlug = new Map((matches ?? []).map((m: { slug: string; id: string }) => [m.slug, m.id]));
+  const signedMatchIds = new Set(
+    (matches ?? []).filter((m: { id: string; signed_off: boolean }) => m.signed_off).map((m: { id: string }) => m.id),
+  );
   const playerIdBySlug = new Map((players ?? []).map((p: { slug: string; id: string }) => [p.slug, p.id]));
   const sideIdBy = new Map(
     (sides ?? []).map((s: { id: string; match_id: string; side_code: string }) => [`${s.match_id}:${s.side_code}`, s.id]),
@@ -38,7 +47,21 @@ async function resolveIds(): Promise<ResolvedIds> {
     set.add(row.player_id);
     playersInMatch.set(row.match_id, set);
   }
-  return { matchIdBySlug, playerIdBySlug, sideIdBy, holeIdBy, playersInMatch };
+  const lockedHolesByMatch = new Map<string, Set<number>>();
+  for (const row of (locks ?? []) as { match_id: string; hole_number: number }[]) {
+    const set = lockedHolesByMatch.get(row.match_id) ?? new Set<number>();
+    set.add(row.hole_number);
+    lockedHolesByMatch.set(row.match_id, set);
+  }
+  return { matchIdBySlug, playerIdBySlug, sideIdBy, holeIdBy, playersInMatch, lockedHolesByMatch, signedMatchIds };
+}
+function assertHoleUnlocked(ids: ResolvedIds, matchId: string, holeNumber: number) {
+  if (ids.signedMatchIds.has(matchId)) {
+    throw new Error("This scorecard is signed — unlock it to change the score");
+  }
+  if (ids.lockedHolesByMatch.get(matchId)?.has(holeNumber)) {
+    throw new Error("This hole is locked — unlock it to change the score");
+  }
 }
 async function matchBySlug(slug: string): Promise<AnyMatch> {
   const m = (await loadMatches()).find((x) => x.id === slug);
@@ -91,6 +114,7 @@ async function assertIndividualWriteAllowed(
   }
   const holeId = ids.holeIdBy.get(`${cfg.courseId}:${input.holeNumber}`);
   if (!holeId) throw new Error("Hole does not belong to this match's course");
+  assertHoleUnlocked(ids, matchId, input.holeNumber);
   return { matchId, playerId, holeId };
 }
 export async function upsertIndividualScore(input: IndividualInput) {
@@ -138,6 +162,7 @@ async function assertScrambleWriteAllowed(
   if (!sideId) throw new Error("Side does not belong to this match");
   const holeId = ids.holeIdBy.get(`${cfg.courseId}:${input.holeNumber}`);
   if (!holeId) throw new Error("Hole does not belong to this match's course");
+  assertHoleUnlocked(ids, matchId, input.holeNumber);
   return { matchId, sideId, holeId };
 }
 export async function upsertScrambleScore(input: ScrambleInput) {
@@ -162,5 +187,53 @@ export async function deleteScrambleScore(input: Omit<ScrambleInput, "gross">) {
   );
   await supabaseAdmin().from("scramble_scores").delete()
     .match({ match_id: matchId, match_side_id: sideId, hole_id: holeId });
+  revalidateForMatch(input.matchSlug);
+}
+export async function setHoleLock(input: { matchSlug: string; holeNumber: number; locked: boolean }) {
+  requireScorer();
+  validateHole(input.holeNumber);
+  const ids = await resolveIds();
+  const matchId = ids.matchIdBySlug.get(input.matchSlug);
+  if (!matchId) throw new Error("Unknown match");
+  if (ids.signedMatchIds.has(matchId)) {
+    throw new Error("This scorecard is signed — unlock it to change hole locks");
+  }
+  const sb = supabaseAdmin();
+  if (input.locked) {
+    const { error } = await sb.from("match_hole_locks").upsert(
+      { match_id: matchId, hole_number: input.holeNumber },
+      { onConflict: "match_id,hole_number" },
+    );
+    if (error) throw error;
+  } else {
+    const { error } = await sb.from("match_hole_locks").delete()
+      .match({ match_id: matchId, hole_number: input.holeNumber });
+    if (error) throw error;
+  }
+  revalidateForMatch(input.matchSlug);
+}
+export async function setMatchSigned(input: { matchSlug: string; signed: boolean }) {
+  requireScorer();
+  const ids = await resolveIds();
+  const matchId = ids.matchIdBySlug.get(input.matchSlug);
+  if (!matchId) throw new Error("Unknown match");
+  if (input.signed) {
+    const cfg = await matchBySlug(input.matchSlug);
+    const { individualScores, scrambleScores } = await loadRawScores();
+    const ctx = await buildScoringContext(individualScores, scrambleScores);
+    const course = COURSES.find((c) => c.id === cfg.courseId)!;
+    const state = deriveMatchState({
+      match: cfg, course, players: ctx.players,
+      individualScores, scrambleScores, mode: "NET",
+      tee: (playerId: string) => ctx.getTeeForMatch(cfg, playerId),
+      scrambleAllowance: ctx.scrambleAllowance,
+      lockedHoles: ctx.lockedHolesByMatch.get(cfg.id) ?? null,
+    });
+    if (!state.finished) {
+      throw new Error("Match isn't decided yet — can't sign until the result is final");
+    }
+  }
+  const { error } = await supabaseAdmin().from("matches").update({ signed_off: input.signed }).eq("id", matchId);
+  if (error) throw error;
   revalidateForMatch(input.matchSlug);
 }

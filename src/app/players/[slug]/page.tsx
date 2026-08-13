@@ -24,7 +24,7 @@ export default async function PlayerProfile({ params }: { params: { slug: string
           {player.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
         </div>
         <div className="flex-1">
-          <p className="eyebrow">{player.team === "EU" ? "Team Europe" : "Team USA"}</p>
+          <p className="eyebrow">{player.team === "EU" ? "Team Europe" : player.team === "USA" ? "Team USA" : "Unassigned"}</p>
           <h1 className="display text-2xl mt-1">{player.name}</h1>
           <p className="text-sm text-ink/60">Handicap Index {player.handicapIndex.toFixed(1)}</p>
         </div>

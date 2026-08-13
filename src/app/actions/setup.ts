@@ -18,6 +18,20 @@ function validateTeam(t: unknown): TeamCode {
   return t;
 }
 
+function validateTeamOrNull(t: unknown): TeamCode | null {
+  if (t === null) return null;
+  return validateTeam(t);
+}
+
+function validateName(n: unknown): string {
+  if (typeof n !== "string") throw new Error("Invalid name");
+  const trimmed = n.trim();
+  if (trimmed.length < 1 || trimmed.length > 40) {
+    throw new Error("Name must be between 1 and 40 characters");
+  }
+  return trimmed;
+}
+
 interface SetupIds {
   tournamentId: string;
   teamsLocked: boolean;
@@ -97,7 +111,6 @@ function revalidateForSetup() {
   revalidatePath("/");
   revalidatePath("/players");
   revalidatePath("/players/[slug]", "page");
-  revalidatePath("/score");
   revalidatePath("/score/[matchId]", "page");
   revalidatePath("/matches/[id]", "page");
   revalidatePath("/days/[n]", "page");
@@ -112,14 +125,34 @@ async function assertNoScoresFor(matchIds: string[], table: "scores" | "scramble
   }
 }
 
-export async function setPlayerTeam(input: { playerSlug: string; team: TeamCode }) {
-  const team = validateTeam(input.team);
+export async function setPlayerTeam(input: { playerSlug: string; team: TeamCode | null }) {
+  const team = validateTeamOrNull(input.team);
   const ids = await resolveSetupIds();
   if (ids.teamsLocked) throw new Error("Teams are locked — unlock to reassign");
   const playerId = ids.playerIdBySlug.get(input.playerSlug);
-  const teamId = ids.teamIdByCode.get(team);
-  if (!playerId || !teamId) throw new Error("Unknown player or team");
+  if (!playerId) throw new Error("Unknown player");
+  const teamId = team === null ? null : ids.teamIdByCode.get(team);
+  if (team !== null && !teamId) throw new Error("Unknown team");
   const { error } = await supabaseAdmin().from("players").update({ team_id: teamId }).eq("id", playerId);
+  if (error) throw error;
+  revalidateForSetup();
+}
+
+export async function resetTeamAssignments() {
+  const ids = await resolveSetupIds();
+  if (ids.teamsLocked) throw new Error("Teams are locked — unlock to reassign");
+  const { error } = await supabaseAdmin()
+    .from("players").update({ team_id: null }).eq("tournament_id", ids.tournamentId);
+  if (error) throw error;
+  revalidateForSetup();
+}
+
+export async function updatePlayerName(input: { playerSlug: string; name: string }) {
+  const name = validateName(input.name);
+  const ids = await resolveSetupIds();
+  const playerId = ids.playerIdBySlug.get(input.playerSlug);
+  if (!playerId) throw new Error("Unknown player");
+  const { error } = await supabaseAdmin().from("players").update({ name }).eq("id", playerId);
   if (error) throw error;
   revalidateForSetup();
 }
@@ -154,15 +187,55 @@ export async function setPlayerTee(input: { playerSlug: string; dayNumber: 1 | 2
 export async function lockTeams() {
   const ids = await resolveSetupIds();
   const sb = supabaseAdmin();
-  const { data: players, error } = await sb.from("players").select("team_id");
+  const { data: players, error } = await sb
+    .from("players").select("id, team_id, sort_order").order("sort_order");
   if (error) throw error;
   const euId = ids.teamIdByCode.get("EU");
   const usaId = ids.teamIdByCode.get("USA");
-  const euCount = (players ?? []).filter((p: any) => p.team_id === euId).length;
-  const usaCount = (players ?? []).filter((p: any) => p.team_id === usaId).length;
-  if (euCount !== 4 || usaCount !== 4) {
-    throw new Error(`Each team must have exactly 4 players before locking (currently EU ${euCount}, USA ${usaCount})`);
+  const euRoster = (players ?? []).filter((p: any) => p.team_id === euId);
+  const usaRoster = (players ?? []).filter((p: any) => p.team_id === usaId);
+  if (euRoster.length !== 4 || usaRoster.length !== 4) {
+    throw new Error(`Each team must have exactly 4 players before locking (currently EU ${euRoster.length}, USA ${usaRoster.length})`);
   }
+
+  // Pairings (match_players) may still reflect a stale roster from before
+  // this team assignment — re-derive a default pairing from the roster
+  // that's actually being locked in, so the pairing boards start correct
+  // and later swaps validate against a roster that actually matches.
+  const day1 = ids.matchIdsByDay.get(1) ?? [];
+  const day2 = ids.matchIdsByDay.get(2) ?? [];
+  const day3 = ids.matchIdsByDay.get(3) ?? [];
+  const rows: { match_id: string; match_side_id: string; player_id: string; pairing_position: number }[] = [];
+
+  function assignPairMatches(matches: { id: string }[], roster: { id: string }[], code: TeamCode) {
+    matches.forEach((m, mi) => {
+      const sideId = ids.sideIdByMatchAndCode.get(`${m.id}:${code}`);
+      if (!sideId) throw new Error(`Missing ${code} side for match ${m.id}`);
+      roster.slice(mi * 2, mi * 2 + 2).forEach((p, pos) => {
+        rows.push({ match_id: m.id, match_side_id: sideId, player_id: p.id, pairing_position: pos + 1 });
+      });
+    });
+  }
+  assignPairMatches(day1, euRoster, "EU");
+  assignPairMatches(day1, usaRoster, "USA");
+  assignPairMatches(day2, euRoster, "EU");
+  assignPairMatches(day2, usaRoster, "USA");
+  day3.forEach((m, i) => {
+    const euSideId = ids.sideIdByMatchAndCode.get(`${m.id}:EU`);
+    const usaSideId = ids.sideIdByMatchAndCode.get(`${m.id}:USA`);
+    if (!euSideId || !usaSideId) throw new Error(`Missing side for match ${m.id}`);
+    rows.push({ match_id: m.id, match_side_id: euSideId, player_id: euRoster[i].id, pairing_position: 1 });
+    rows.push({ match_id: m.id, match_side_id: usaSideId, player_id: usaRoster[i].id, pairing_position: 1 });
+  });
+
+  const matchIds = [...day1, ...day2, ...day3].map((m) => m.id);
+  if (matchIds.length > 0) {
+    const { error: delErr } = await sb.from("match_players").delete().in("match_id", matchIds);
+    if (delErr) throw delErr;
+    const { error: insErr } = await sb.from("match_players").insert(rows);
+    if (insErr) throw insErr;
+  }
+
   const { error: updErr } = await sb.from("tournaments").update({ teams_locked: true }).eq("id", ids.tournamentId);
   if (updErr) throw updErr;
   revalidateForSetup();

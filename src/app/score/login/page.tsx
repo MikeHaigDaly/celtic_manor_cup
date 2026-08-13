@@ -15,7 +15,7 @@ export default function ScoreLoginPage({ searchParams }: { searchParams: { next?
           className="w-full rounded-lg border border-ink/15 px-4 py-3 text-lg tracking-widest text-center"
           required
         />
-        <input type="hidden" name="next" value={searchParams.next ?? "/score"} />
+        <input type="hidden" name="next" value={searchParams.next ?? "/"} />
         <button className="btn w-full">Unlock scoring</button>
         {searchParams.error && (
           <p className="text-sm text-red-600 text-center">Incorrect PIN. Try again.</p>

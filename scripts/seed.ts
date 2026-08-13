@@ -51,21 +51,31 @@ async function main() {
     EU:  teamsData.find((t) => t.code === "EU")!.id,
     USA: teamsData.find((t) => t.code === "USA")!.id,
   };
-  console.log("→ Players (Handicap Index)");
-  const playerRows = PLAYERS.map((p, i) => ({
-    tournament_id: tournamentId,
-    team_id: teamId[p.team],
-    slug: p.id,
-    name: p.name,
-    handicap_index: p.handicapIndex,
-    photo_url: p.photoUrl ?? null,
-    sort_order: i,
-  }));
-  const playersDb = await upsert<typeof playerRows[number], RowWithId & { slug: string }>(
-    "players", playerRows, "tournament_id,slug",
-  );
+  console.log("→ Players (create if missing — name/HI/team are live-edited from /teams, never overwritten here)");
+  const { data: existingPlayerRows, error: existingPlayersErr } = await sb
+    .from("players").select("id, slug").eq("tournament_id", tournamentId);
+  if (existingPlayersErr) throw existingPlayersErr;
+  const existingSlugs = new Set((existingPlayerRows ?? []).map((p: any) => p.slug as string));
+  const newPlayerRows = PLAYERS
+    .filter((p) => !existingSlugs.has(p.id))
+    .map((p, i) => ({
+      tournament_id: tournamentId,
+      team_id: p.team ? teamId[p.team] : null,
+      slug: p.id,
+      name: p.name,
+      handicap_index: p.handicapIndex,
+      photo_url: p.photoUrl ?? null,
+      sort_order: existingSlugs.size + i,
+    }));
+  if (newPlayerRows.length > 0) {
+    const { error: insErr } = await sb.from("players").insert(newPlayerRows);
+    if (insErr) throw new Error(`players: ${insErr.message}`);
+  }
+  const { data: playersDb, error: playersSelErr } = await sb
+    .from("players").select("id, slug").eq("tournament_id", tournamentId);
+  if (playersSelErr) throw playersSelErr;
   const playerId = new Map<string, string>();
-  for (const p of playersDb) playerId.set(p.slug, p.id);
+  for (const p of playersDb ?? []) playerId.set(p.slug, p.id);
   console.log("→ Courses & holes");
   const courseRows = COURSES.map((c) => ({ slug: c.id, name: c.name }));
   const coursesDb = await upsert<typeof courseRows[number], CourseIdRow>("courses", courseRows, "slug");

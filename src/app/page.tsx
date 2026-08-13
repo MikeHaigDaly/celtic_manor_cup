@@ -21,7 +21,7 @@ const isDir = (v: unknown): v is "asc" | "desc" => v === "asc" || v === "desc";
 
 interface Row {
   playerId: string;
-  team: "EU" | "USA";
+  team: "EU" | "USA" | null;
   name: string;
   holes: number;
   toPar: number;
@@ -160,7 +160,11 @@ export default async function LeaderboardPage({
                       <Link href={`/players/${r.playerId}`} className="hover:underline">{r.name}</Link>
                     </td>
                     <td className="px-2 py-2">
-                      <span className={r.team === "EU" ? "badge-eu" : "badge-usa"}>{r.team}</span>
+                      {r.team ? (
+                        <span className={r.team === "EU" ? "badge-eu" : "badge-usa"}>{r.team}</span>
+                      ) : (
+                        <span className="text-xs text-ink/30">—</span>
+                      )}
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.holes}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.toPar > 0 ? `+${r.toPar}` : r.toPar === 0 ? "E" : r.toPar}</td>

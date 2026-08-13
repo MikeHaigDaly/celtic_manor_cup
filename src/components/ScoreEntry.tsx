@@ -1,11 +1,11 @@
 "use client";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AnyMatch, Course, HoleResult, IndividualScore, Player, ScrambleScore, Tee } from "@/lib/types";
 import { deriveMatchState, day2PairHandicaps, individualMatchHandicaps } from "@/lib/scoring/derive";
 import { day1RuleLabel } from "@/lib/scoring/day1";
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
-import { upsertIndividualScore, upsertScrambleScore, deleteIndividualScore, deleteScrambleScore } from "@/app/actions/scores";
+import { upsertIndividualScore, upsertScrambleScore, setHoleLock } from "@/app/actions/scores";
 import clsx from "clsx";
 
 interface Props {
@@ -17,17 +17,27 @@ interface Props {
   /** Each participant's own chosen tee, keyed by player id. */
   teeByPlayer: Record<string, Tee>;
   scrambleAllowance: { low: number; high: number };
+  initialLockedHoles: number[];
+  initialSigned: boolean;
+  /** Jump straight to this hole (e.g. tapped from the match scorecard). */
+  initialHoleNumber?: number;
 }
 
 /** Big +/- stepper. Saves immediately on every tap — no separate save step. */
 function Stepper({
-  value, onChange, min = 1, max = 15,
-}: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+  value, onChange, min = 1, max = 15, disabled,
+}: { value: number; onChange: (v: number) => void; min?: number; max?: number; disabled?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <button type="button" onClick={() => onChange(Math.max(min, value - 1))} className="stepper-btn" aria-label="decrement">−</button>
+      <button
+        type="button" onClick={() => onChange(Math.max(min, value - 1))} aria-label="decrement" disabled={disabled}
+        className={clsx("stepper-btn", disabled && "opacity-30 cursor-not-allowed active:scale-100")}
+      >−</button>
       <div className="display text-4xl w-14 text-center tabular-nums">{value}</div>
-      <button type="button" onClick={() => onChange(Math.min(max, value + 1))} className="stepper-btn" aria-label="increment">+</button>
+      <button
+        type="button" onClick={() => onChange(Math.min(max, value + 1))} aria-label="increment" disabled={disabled}
+        className={clsx("stepper-btn", disabled && "opacity-30 cursor-not-allowed active:scale-100")}
+      >+</button>
     </div>
   );
 }
@@ -65,23 +75,42 @@ function HoleDots({
   );
 }
 
-export function ScoreEntry({ match, course, players, individualScores, scrambleScores, teeByPlayer, scrambleAllowance }: Props) {
+export function ScoreEntry({
+  match, course, players, individualScores, scrambleScores, teeByPlayer, scrambleAllowance,
+  initialLockedHoles, initialSigned, initialHoleNumber,
+}: Props) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   // Local score maps — hydrated from props (server truth), used for optimistic UI.
   const [ind, setInd] = useState<IndividualScore[]>(individualScores);
   const [scr, setScr] = useState<ScrambleScore[]>(scrambleScores);
+  const [lockedHoles, setLockedHoles] = useState<Set<number>>(() => new Set(initialLockedHoles));
+  const [signed, setSigned] = useState(initialSigned);
+
+  // initialLockedHoles/initialSigned only change when the server re-fetches —
+  // resync so a lock/sign (from this device or another) shows up after
+  // router.refresh().
+  useEffect(() => {
+    setLockedHoles(new Set(initialLockedHoles));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLockedHoles]);
+
+  useEffect(() => {
+    setSigned(initialSigned);
+  }, [initialSigned]);
 
   const getTee = useMemo(() => (playerId: string) => teeByPlayer[playerId] ?? null, [teeByPlayer]);
 
   // Hole result / match status shown here is always the official NET result —
-  // scores are always entered as gross regardless.
+  // scores are always entered as gross regardless. A hole only counts once
+  // it's locked — entering a gross score is provisional until then.
   const state = useMemo(() => deriveMatchState({
-    match, course, players, individualScores: ind, scrambleScores: scr, tee: getTee, scrambleAllowance,
-  }), [match, course, players, ind, scr, getTee, scrambleAllowance]);
+    match, course, players, individualScores: ind, scrambleScores: scr, tee: getTee, scrambleAllowance, lockedHoles,
+  }), [match, course, players, ind, scr, getTee, scrambleAllowance, lockedHoles]);
 
   const [holeNumber, setHoleNumber] = useState<number>(() => {
+    if (initialHoleNumber) return initialHoleNumber;
     const pendingHole = state.holeResults.find((h) => h.winner === "PENDING");
     return pendingHole?.hole.number ?? 1;
   });
@@ -92,11 +121,54 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
   const findScr = (side: "EU" | "USA") =>
     scr.find((s) => s.matchId === match.id && s.side === side && s.holeNumber === holeNumber)?.gross;
 
+  const isHoleLocked = lockedHoles.has(holeNumber);
+  const isEditingBlocked = isHoleLocked || signed;
+
+  const participantIds: string[] = match.format === "DAY2_SCRAMBLE" ? [] :
+    match.format === "DAY3_SINGLES" ? [match.euPlayer, match.usaPlayer] :
+    [...match.euPlayers, ...match.usaPlayers];
+
   function goto(n: number) {
     setHoleNumber(Math.min(18, Math.max(1, n)));
   }
 
+  function toggleHoleLock() {
+    if (signed) return;
+    const next = !isHoleLocked;
+    const prev = lockedHoles;
+
+    // Locking treats a par (the displayed default) as an entered score for
+    // anyone who never touched the stepper — no need to explicitly tap par.
+    if (next) {
+      if (match.format === "DAY2_SCRAMBLE") {
+        (["EU", "USA"] as const).forEach((side) => {
+          if (findScr(side) == null) updateScramble(side, hole.par);
+        });
+      } else {
+        participantIds.forEach((pid) => {
+          if (findInd(pid) == null) updateIndividual(pid, hole.par);
+        });
+      }
+    }
+
+    setLockedHoles((rows) => {
+      const copy = new Set(rows);
+      if (next) copy.add(holeNumber); else copy.delete(holeNumber);
+      return copy;
+    });
+    startTransition(async () => {
+      try {
+        await setHoleLock({ matchSlug: match.id, holeNumber, locked: next });
+      } catch (e) {
+        console.error(e);
+        setLockedHoles(prev);
+      }
+      router.refresh();
+    });
+  }
+
   function updateIndividual(playerId: string, gross: number) {
+    if (isEditingBlocked) return;
     startTransition(async () => {
       // optimistic
       setInd((rows) => {
@@ -113,6 +185,7 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
   }
 
   function updateScramble(side: "EU" | "USA", gross: number) {
+    if (isEditingBlocked) return;
     startTransition(async () => {
       setScr((rows) => {
         const other = rows.filter((r) => !(r.matchId === match.id && r.side === side && r.holeNumber === holeNumber));
@@ -121,23 +194,6 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
       try {
         await upsertScrambleScore({ matchSlug: match.id, side, holeNumber, gross });
       } catch (e) { console.error(e); }
-      router.refresh();
-    });
-  }
-
-  async function resetHole() {
-    startTransition(async () => {
-      if (match.format === "DAY2_SCRAMBLE") {
-        setScr((rows) => rows.filter((r) => !(r.matchId === match.id && r.holeNumber === holeNumber)));
-        await deleteScrambleScore({ matchSlug: match.id, side: "EU",  holeNumber });
-        await deleteScrambleScore({ matchSlug: match.id, side: "USA", holeNumber });
-      } else {
-        const ids = match.format === "DAY3_SINGLES"
-          ? [match.euPlayer, match.usaPlayer]
-          : [...match.euPlayers, ...match.usaPlayers];
-        setInd((rows) => rows.filter((r) => !(r.matchId === match.id && r.holeNumber === holeNumber && ids.includes(r.playerId))));
-        for (const pid of ids) await deleteIndividualScore({ matchSlug: match.id, playerSlug: pid, holeNumber });
-      }
       router.refresh();
     });
   }
@@ -154,7 +210,7 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
 
   const scrambleInfo = useMemo(() => {
     if (match.format !== "DAY2_SCRAMBLE")
-      return { euPH: 0, usaPH: 0, euMatch: 0, usaMatch: 0, euOverride: false, usaOverride: false };
+      return { euPH: 0, usaPH: 0, euOverride: false, usaOverride: false };
     return day2PairHandicaps(match, players, getTee, scrambleAllowance);
   }, [match, players, getTee, scrambleAllowance]);
 
@@ -166,18 +222,34 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
         <p className="text-sm">{course.name}</p>
       </div>
 
+      {signed && (
+        <div className="rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-sm text-ink/70">
+          This scorecard is signed. Unlock it from the match page to make changes.
+        </div>
+      )}
+
       {/* Hole selector */}
       <HoleDots holes={course.holes} holeNumber={holeNumber} holeResults={state.holeResults} onSelect={goto} />
 
       {/* Hole header */}
       <div className="card p-4 flex items-center justify-between">
         <div>
-          <p className="display text-2xl">Hole {hole.number}</p>
+          <div className="flex items-center gap-2">
+            <p className="display text-2xl">Hole {hole.number}</p>
+            {isHoleLocked && (
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-widest bg-ink/10 text-ink/60">
+                Locked
+              </span>
+            )}
+          </div>
           <p className="text-sm text-ink/60">Par {hole.par} · SI {hole.strokeIndex}</p>
           {ruleLabel && <p className="mt-1 text-xs font-semibold tracking-widest uppercase">{ruleLabel}</p>}
         </div>
         <div className="flex gap-1">
           <button onClick={() => goto(holeNumber - 1)} className="btn-outline text-xs" disabled={holeNumber <= 1}>Prev</button>
+          <button onClick={toggleHoleLock} className="btn-outline text-xs" disabled={signed}>
+            {isHoleLocked ? "Unlock" : "Lock"}
+          </button>
           <button onClick={() => goto(holeNumber + 1)} className="btn-outline text-xs" disabled={holeNumber >= 18}>Next</button>
         </div>
       </div>
@@ -190,23 +262,25 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
             const saved = findScr(side);
             const val = saved ?? hole.par;
             const pairPH = side === "EU" ? scrambleInfo.euPH : scrambleInfo.usaPH;
-            const matchPH = side === "EU" ? scrambleInfo.euMatch : scrambleInfo.usaMatch;
             const isOverride = side === "EU" ? scrambleInfo.euOverride : scrambleInfo.usaOverride;
-            const strokes = getHandicapStrokes(matchPH, hole.strokeIndex);
+            const strokes = getHandicapStrokes(pairPH, hole.strokeIndex);
             return (
               <div key={side} className="card p-4">
                 <p className={side === "EU" ? "badge-eu" : "badge-usa"}>{side === "EU" ? "EUROPE" : "USA"}</p>
-                <p className="mt-1 font-medium">{ids.map((i) => players.find((p) => p.id === i)?.name).join(" / ")}</p>
-                <p className="text-xs text-ink/60">
-                  Pair PH {pairPH}{isOverride ? " (override)" : ""} · Match {matchPH}
-                  {strokes > 0 ? ` · +${strokes} this hole` : ""}
-                </p>
-                <div className="mt-3 flex items-center justify-center">
-                  <Stepper value={val} onChange={(v) => updateScramble(side, v)} />
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{ids.map((i) => players.find((p) => p.id === i)?.name).join(" / ")}</p>
+                    <p className="text-xs text-ink/60">
+                      Pair PH {pairPH}{isOverride ? " (override)" : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <Stepper value={val} onChange={(v) => updateScramble(side, v)} disabled={isEditingBlocked} />
+                    <p className="text-xs text-ink/60 tabular-nums">
+                      NET <span className="font-semibold text-ink">{val - strokes}</span>
+                    </p>
+                  </div>
                 </div>
-                {saved != null && strokes > 0 && (
-                  <p className="mt-1 text-xs text-ink/60 text-center">Gross {saved} · Net {saved - strokes}</p>
-                )}
               </div>
             );
           })}
@@ -236,14 +310,15 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{player.name}</p>
                           <p className="text-xs text-ink/60">
-                            HI {player.handicapIndex.toFixed(1)} · CH {ch} · Match {matchPH}
-                            {strokes > 0 ? ` · +${strokes} this hole` : ""}
+                            HI {player.handicapIndex.toFixed(1)} · CH {ch}
                           </p>
-                          {saved != null && strokes > 0 && (
-                            <p className="text-xs">Gross {saved} · Net {saved - strokes}</p>
-                          )}
                         </div>
-                        <Stepper value={val} onChange={(v) => updateIndividual(pid, v)} />
+                        <div className="flex flex-col items-center gap-1">
+                          <Stepper value={val} onChange={(v) => updateIndividual(pid, v)} disabled={isEditingBlocked} />
+                          <p className="text-xs text-ink/60 tabular-nums">
+                            NET <span className="font-semibold text-ink">{val - strokes}</span>
+                          </p>
+                        </div>
                       </div>
                     );
                   })}
@@ -264,7 +339,8 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
             <span className="team-usa font-medium">USA {holeResult.usaScore ?? "—"}</span>
           </div>
           <p className="display text-lg">
-            {holeResult.winner === "PENDING" ? "WAITING FOR SCORE"
+            {holeResult.winner === "PENDING"
+              ? (holeResult.euScore != null && holeResult.usaScore != null ? "NOT LOCKED YET" : "WAITING FOR SCORE")
               : holeResult.winner === "HALVED" ? "HALVED"
               : holeResult.winner === "EU" ? "EUROPE WINS HOLE" : "USA WINS HOLE"}
           </p>
@@ -273,14 +349,6 @@ export function ScoreEntry({ match, course, players, individualScores, scrambleS
           Match: <span className="font-medium">{state.statusText}</span>
           {state.holesCompleted > 0 && !state.finished && <> · THRU {state.throughHole}</>}
         </p>
-      </div>
-
-      {/* Bottom action bar */}
-      <div className="sticky bottom-16 md:bottom-4 flex gap-2 justify-between">
-        <button onClick={resetHole} className="btn-outline" disabled={pending}>Reset hole</button>
-        <button onClick={() => goto(holeNumber + 1)} className="btn flex-1" disabled={pending || holeNumber >= 18}>
-          Next hole
-        </button>
       </div>
     </div>
   );

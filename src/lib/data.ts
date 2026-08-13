@@ -47,16 +47,43 @@ export async function loadRawScores(): Promise<{
   return { individualScores, scrambleScores };
 }
 
+/** Locked hole numbers for every match, keyed by match slug. */
+async function loadAllLockedHoles(): Promise<Map<string, Set<number>>> {
+  const sb = supabaseServer();
+  const { data, error } = await sb
+    .from("match_hole_locks")
+    .select("hole_number, matches!inner(slug)");
+  if (error) throw error;
+  const out = new Map<string, Set<number>>();
+  for (const r of (data ?? []) as any[]) {
+    const slug = r.matches.slug as string;
+    const set = out.get(slug) ?? new Set<number>();
+    set.add(r.hole_number as number);
+    out.set(slug, set);
+  }
+  return out;
+}
+
+/** Match slugs that have been signed off (finalized) — blocks further edits. */
+async function loadSignedMatches(): Promise<Set<string>> {
+  const sb = supabaseServer();
+  const { data, error } = await sb.from("matches").select("slug, signed_off").eq("signed_off", true);
+  if (error) throw error;
+  return new Set((data ?? []).map((r: any) => r.slug as string));
+}
+
 /** Build the derivation context for use with `deriveAllMatchStates`. */
 export async function buildScoringContext(
   individualScores: IndividualScore[],
   scrambleScores: ScrambleScore[],
 ) {
-  const [players, matches, roundSettings, playerTeeSelections] = await Promise.all([
+  const [players, matches, roundSettings, playerTeeSelections, lockedHolesByMatch, signedMatches] = await Promise.all([
     loadPlayers(),
     loadMatches(),
     loadRoundSettings(),
     loadPlayerTeeSelections(),
+    loadAllLockedHoles(),
+    loadSignedMatches(),
   ]);
   return {
     players,
@@ -68,6 +95,8 @@ export async function buildScoringContext(
       teeForPlayerFromSelections(m, playerId, playerTeeSelections, roundSettings),
     scrambleAllowance: SCRAMBLE_ALLOWANCE,
     allowancePercent: 100,
+    lockedHolesByMatch,
+    signedMatches,
   };
 }
 

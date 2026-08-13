@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext, useDraggable, useDroppable, useSensor, useSensors,
@@ -10,7 +10,7 @@ import clsx from "clsx";
 import { COURSES } from "@/config/tournament";
 import type { AnyMatch, Day1Match, Day2Match, Day3Match, Player, RoundSetting, TeamCode } from "@/lib/types";
 import {
-  setPlayerTeam, updatePlayerHandicap, setPlayerTee,
+  setPlayerTeam, resetTeamAssignments, updatePlayerName, updatePlayerHandicap, setPlayerTee,
   setDayPairings, setDaySingles, lockTeams, unlockTeams,
 } from "@/app/actions/setup";
 
@@ -51,7 +51,9 @@ function findPairSlot(
 
 /* ── Small drag/drop primitives ─────────────────────────────────────────── */
 
-function Chip({ id, label, disabled }: { id: string; label: string; disabled?: boolean }) {
+function Chip({
+  id, label, disabled, trailing,
+}: { id: string; label: string; disabled?: boolean; trailing?: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, disabled });
   const style: CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -65,11 +67,12 @@ function Chip({ id, label, disabled }: { id: string; label: string; disabled?: b
       {...listeners}
       {...attributes}
       className={clsx(
-        "rounded-lg border border-ink/15 bg-cream px-3 py-2 text-sm font-medium select-none",
+        "flex items-center justify-between gap-2 rounded-lg border border-ink/15 bg-cream px-3 py-2 text-sm font-medium select-none",
         disabled ? "cursor-default opacity-70" : "cursor-grab active:cursor-grabbing shadow-sm",
       )}
     >
-      {label}
+      <span>{label}</span>
+      {trailing}
     </div>
   );
 }
@@ -96,26 +99,50 @@ function useDndSensors() {
 
 function TeamAssignBoard({
   players, locked, onMove,
-}: { players: Player[]; locked: boolean; onMove: (slug: string, team: TeamCode) => void }) {
+}: { players: Player[]; locked: boolean; onMove: (slug: string, team: TeamCode | null) => void }) {
   const sensors = useDndSensors();
   const eu = players.filter((p) => p.team === "EU");
   const usa = players.filter((p) => p.team === "USA");
+  const pool = [...players.filter((p) => p.team == null)].sort((a, b) => a.name.localeCompare(b.name));
 
   function handleDragEnd(e: DragEndEvent) {
     if (!e.over) return;
-    const team = e.over.id === "team-EU" ? "EU" : e.over.id === "team-USA" ? "USA" : null;
-    if (!team) return;
+    const team =
+      e.over.id === "team-EU" ? "EU" :
+      e.over.id === "team-USA" ? "USA" :
+      e.over.id === "team-pool" ? null : undefined;
+    if (team === undefined) return;
     onMove(e.active.id as string, team);
   }
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="grid grid-cols-2 gap-4">
-        <Slot id="team-EU" className="card p-3 space-y-2 min-h-[10rem]">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4">
+        <Slot
+          id="team-EU"
+          className="card space-y-2 p-3 min-h-[6rem] md:min-h-[16rem] border-2 border-dashed border-eu/40"
+        >
           <p className="badge-eu mb-1">EUROPE · {eu.length}</p>
           {eu.map((p) => <Chip key={p.id} id={p.id} label={p.name} disabled={locked} />)}
         </Slot>
-        <Slot id="team-USA" className="card p-3 space-y-2 min-h-[10rem]">
+
+        <Slot id="team-pool" className="space-y-2 md:w-56 min-h-[4rem] rounded-xl p-1">
+          {pool.length === 0 ? (
+            <p className="text-center text-[11px] text-ink/40 py-4">
+              {locked ? "" : "All golfers assigned"}
+            </p>
+          ) : (
+            <>
+              {!locked && <p className="text-center text-[11px] text-ink/40">drag left or right to assign a team</p>}
+              {pool.map((p) => <Chip key={p.id} id={p.id} label={p.name} disabled={locked} />)}
+            </>
+          )}
+        </Slot>
+
+        <Slot
+          id="team-USA"
+          className="card space-y-2 p-3 min-h-[6rem] md:min-h-[16rem] border-2 border-dashed border-usa/40"
+        >
           <p className="badge-usa mb-1">USA · {usa.length}</p>
           {usa.map((p) => <Chip key={p.id} id={p.id} label={p.name} disabled={locked} />)}
         </Slot>
@@ -126,22 +153,38 @@ function TeamAssignBoard({
 
 /* ── Handicaps ───────────────────────────────────────────────────────────── */
 
-function HandicapTable({ players, onChange }: { players: Player[]; onChange: (slug: string, hi: number) => void }) {
+function HandicapTable({
+  players, onNameChange, onHandicapChange,
+}: {
+  players: Player[];
+  onNameChange: (slug: string, name: string) => void;
+  onHandicapChange: (slug: string, hi: number) => void;
+}) {
   return (
     <div className="card overflow-hidden">
       <table className="w-full text-sm">
         <thead className="bg-ink/5 text-ink/60 text-[11px] uppercase tracking-widest">
           <tr>
             <th className="text-left px-3 py-2">Golfer</th>
-            <th className="px-2 py-2">Team</th>
             <th className="px-2 py-2 text-right">Handicap Index</th>
           </tr>
         </thead>
         <tbody>
           {players.map((p) => (
             <tr key={p.id} className="border-t border-ink/5">
-              <td className="px-3 py-2">{p.name}</td>
-              <td className="px-2 py-2"><span className={p.team === "EU" ? "badge-eu" : "badge-usa"}>{p.team}</span></td>
+              <td className="px-3 py-2">
+                <input
+                  type="text"
+                  defaultValue={p.name}
+                  maxLength={40}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== p.name) onNameChange(p.id, v);
+                    else e.target.value = p.name;
+                  }}
+                  className="w-full rounded border border-ink/15 px-2 py-1"
+                />
+              </td>
               <td className="px-2 py-2 text-right">
                 <input
                   type="number"
@@ -151,7 +194,7 @@ function HandicapTable({ players, onChange }: { players: Player[]; onChange: (sl
                   defaultValue={p.handicapIndex}
                   onBlur={(e) => {
                     const v = parseFloat(e.target.value);
-                    if (Number.isFinite(v)) onChange(p.id, v);
+                    if (Number.isFinite(v)) onHandicapChange(p.id, v);
                   }}
                   className="w-20 text-right rounded border border-ink/15 px-2 py-1 tabular-nums"
                 />
@@ -186,7 +229,7 @@ function TeeGrid({
               return (
                 <th key={r.dayNumber} className="px-2 py-2 font-normal">
                   Day {r.dayNumber}<br />
-                  <span className="normal-case text-ink/40">{course.name}</span>
+                  <span className="normal-case text-ink/40">{course.name.replace(/^Celtic Manor\s*—\s*/, "")}</span>
                 </th>
               );
             })}
@@ -351,17 +394,58 @@ export function TeamBoard({
   const [day2Pairs, setDay2Pairs] = useState<PairSlots[]>(() => initPairs(day2Matches));
   const [singles, setSingles] = useState<Single[]>(() => initSingles(day3Matches));
 
+  // initialMatches only changes when the server re-fetches (e.g. after
+  // router.refresh()) — resync local pairing state so a server-side
+  // change (like lockTeams() re-deriving pairings from the roster) shows
+  // up without requiring a full page reload.
+  useEffect(() => {
+    setDay1Pairs(initPairs(day1Matches));
+    setDay2Pairs(initPairs(day2Matches));
+    setSingles(initSingles(day3Matches));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMatches]);
+
   const playerName = (id: string) => players.find((p) => p.id === id)?.name ?? id;
   const euCount = players.filter((p) => p.team === "EU").length;
   const usaCount = players.filter((p) => p.team === "USA").length;
 
-  function handleMovePlayer(slug: string, team: TeamCode) {
+  function handleResetTeams() {
+    setActionError(null);
+    const prevPlayers = players;
+    setPlayers((prev) => prev.map((p) => ({ ...p, team: null })));
+    startTransition(async () => {
+      try {
+        await resetTeamAssignments();
+      } catch (e) {
+        setPlayers(prevPlayers);
+        setActionError(errorMessage(e));
+      }
+      router.refresh();
+    });
+  }
+
+  function handleMovePlayer(slug: string, team: TeamCode | null) {
     setActionError(null);
     const prevPlayers = players;
     setPlayers((prev) => prev.map((p) => (p.id === slug ? { ...p, team } : p)));
     startTransition(async () => {
       try {
         await setPlayerTeam({ playerSlug: slug, team });
+      } catch (e) {
+        setPlayers(prevPlayers);
+        setActionError(errorMessage(e));
+      }
+      router.refresh();
+    });
+  }
+
+  function handleNameChange(slug: string, name: string) {
+    setActionError(null);
+    const prevPlayers = players;
+    setPlayers((prev) => prev.map((p) => (p.id === slug ? { ...p, name } : p)));
+    startTransition(async () => {
+      try {
+        await updatePlayerName({ playerSlug: slug, name });
       } catch (e) {
         setPlayers(prevPlayers);
         setActionError(errorMessage(e));
@@ -464,23 +548,28 @@ export function TeamBoard({
       )}
 
       <section className="space-y-3">
+        <h2 className="display text-lg">Handicap Index</h2>
+        <HandicapTable players={players} onNameChange={handleNameChange} onHandicapChange={handleHandicapChange} />
+      </section>
+
+      <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="display text-lg">Teams</h2>
-          {locked ? (
-            <button onClick={handleUnlock} className="btn-outline text-xs">Unlock</button>
-          ) : (
-            <button onClick={handleLock} className="btn text-xs">Lock in teams</button>
-          )}
+          <div className="flex items-center gap-2">
+            {!locked && (euCount > 0 || usaCount > 0) && (
+              <button onClick={handleResetTeams} className="btn-outline text-xs">Reset</button>
+            )}
+            {locked ? (
+              <button onClick={handleUnlock} className="btn-outline text-xs">Unlock</button>
+            ) : (
+              <button onClick={handleLock} className="btn text-xs">Lock in teams</button>
+            )}
+          </div>
         </div>
         {!locked && (euCount !== 4 || usaCount !== 4) && (
           <p className="text-xs text-ink/50">Each team needs exactly 4 players to lock (currently EU {euCount}, USA {usaCount}).</p>
         )}
         <TeamAssignBoard players={players} locked={locked} onMove={handleMovePlayer} />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="display text-lg">Handicap Index</h2>
-        <HandicapTable players={players} onChange={handleHandicapChange} />
       </section>
 
       <section className="space-y-3">

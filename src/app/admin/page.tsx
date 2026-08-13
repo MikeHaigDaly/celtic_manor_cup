@@ -48,7 +48,13 @@ export default async function AdminPage() {
               {players.map((p) => (
                 <tr key={p.id} className="border-t border-ink/5">
                   <td className="px-3 py-2">{p.name}</td>
-                  <td className="px-2 py-2"><span className={p.team === "EU" ? "badge-eu" : "badge-usa"}>{p.team}</span></td>
+                  <td className="px-2 py-2">
+                    {p.team ? (
+                      <span className={p.team === "EU" ? "badge-eu" : "badge-usa"}>{p.team}</span>
+                    ) : (
+                      <span className="text-xs text-ink/30">—</span>
+                    )}
+                  </td>
                   <td className="px-2 py-2 text-right tabular-nums">{p.handicapIndex.toFixed(1)}</td>
                 </tr>
               ))}
@@ -115,9 +121,9 @@ export default async function AdminPage() {
       </section>
 
       <section>
-        <h2 className="display text-lg mb-2">Day 2 scramble · pair PH & match handicaps</h2>
+        <h2 className="display text-lg mb-2">Day 2 scramble · pair PH</h2>
         <p className="text-xs text-ink/60 mb-2">
-          Allowance: {(SCRAMBLE_ALLOWANCE.low * 100).toFixed(0)}% low + {(SCRAMBLE_ALLOWANCE.high * 100).toFixed(0)}% high, then match-relative (lower pair plays off zero).
+          Allowance: {(SCRAMBLE_ALLOWANCE.low * 100).toFixed(0)}% low + {(SCRAMBLE_ALLOWANCE.high * 100).toFixed(0)}% high, applied directly by hole SI (same convention as Days 1/3).
         </p>
         <ul className="space-y-2 text-sm">
           {DAY2_MATCHES.map((m) => {
@@ -130,8 +136,8 @@ export default async function AdminPage() {
                   <span className="team-usa">{m.usaPlayers.map(pName).join(" / ")}</span>
                 </p>
                 <p className="text-xs text-ink/60">
-                  EU Pair PH <b className="text-ink">{info.euPH}</b>{info.euOverride ? " (override)" : ""} · MATCH <b className="text-ink">{info.euMatch}</b> ·
-                  USA Pair PH <b className="text-ink ml-1">{info.usaPH}</b>{info.usaOverride ? " (override)" : ""} · MATCH <b className="text-ink">{info.usaMatch}</b>
+                  EU Pair PH <b className="text-ink">{info.euPH}</b>{info.euOverride ? " (override)" : ""} ·
+                  USA Pair PH <b className="text-ink ml-1">{info.usaPH}</b>{info.usaOverride ? " (override)" : ""}
                 </p>
               </li>
             );

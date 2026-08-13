@@ -38,7 +38,8 @@ export interface Course {
 export interface Player {
   id: string;          // stable slug e.g. "mike-daly"
   name: string;
-  team: TeamCode;
+  /** null until dragged onto EU or USA on the /teams setup board. */
+  team: TeamCode | null;
   /** Locked underlying tournament Handicap Index (decimal, e.g. 10.7). */
   handicapIndex: number;
   photoUrl?: string;
