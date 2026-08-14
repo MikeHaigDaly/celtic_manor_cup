@@ -15,17 +15,30 @@ export function useLiveScores(): LiveStatus {
   const [status, setStatus] = useState<LiveStatus>("connecting");
 
   useEffect(() => {
-    const sb = supabaseBrowser();
-    const channel = sb
-      .channel("cmc-scores")
-      .on("postgres_changes", { event: "*", schema: "public", table: "scores" }, () => router.refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "scramble_scores" }, () => router.refresh())
-      .subscribe((s) => {
-        if (s === "SUBSCRIBED") setStatus("live");
-        else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") setStatus("offline");
-        else setStatus("connecting");
-      });
-    return () => { sb.removeChannel(channel); };
+    // Purely cosmetic (a "Live" dot) — any failure here must never take
+    // down the rest of the app, so every step is defensive.
+    let channel: ReturnType<ReturnType<typeof supabaseBrowser>["channel"]> | null = null;
+    let sb: ReturnType<typeof supabaseBrowser> | null = null;
+    try {
+      sb = supabaseBrowser();
+      const safeRefresh = () => { try { router.refresh(); } catch { /* ignore */ } };
+      channel = sb
+        .channel("cmc-scores")
+        .on("postgres_changes", { event: "*", schema: "public", table: "scores" }, safeRefresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "scramble_scores" }, safeRefresh)
+        .subscribe((s) => {
+          try {
+            if (s === "SUBSCRIBED") setStatus("live");
+            else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") setStatus("offline");
+            else setStatus("connecting");
+          } catch { /* ignore */ }
+        });
+    } catch {
+      setStatus("offline");
+    }
+    return () => {
+      try { if (sb && channel) sb.removeChannel(channel); } catch { /* ignore */ }
+    };
   }, [router]);
 
   return status;
