@@ -8,7 +8,11 @@ import {
 } from "@/lib/scoring/courseHandicap";
 import { day2PairHandicaps, individualMatchHandicaps } from "@/lib/scoring/derive";
 
-// Cached; invalidated by revalidatePath() in the teams/setup server actions.
+// force-dynamic (not just cached) — without a dynamic API, Next tries to
+// prerender this at BUILD time, which needs live Supabase env vars in the
+// build environment. Vercel injects those at build time; Railway doesn't,
+// so a build-time prerender attempt here crashes the whole build.
+export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const [players, matches, roundSettings, teeSelections] = await Promise.all([

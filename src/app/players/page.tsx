@@ -2,7 +2,11 @@ import Link from "next/link";
 import { buildScoringContext } from "@/lib/data";
 import { calculatePlayerStats } from "@/lib/scoring/playerStats";
 
-// Cached; invalidated by revalidatePath() in the score/setup server actions.
+// force-dynamic (not just cached) — without a dynamic API, Next tries to
+// prerender this at BUILD time, which needs live Supabase env vars in the
+// build environment. Vercel injects those at build time; Railway doesn't,
+// so a build-time prerender attempt here crashes the whole build.
+export const dynamic = "force-dynamic";
 
 function Avatar({ name, url }: { name: string; url?: string | null }) {
   const initials = name.split(" ").map((s) => s[0]).slice(0, 2).join("");
