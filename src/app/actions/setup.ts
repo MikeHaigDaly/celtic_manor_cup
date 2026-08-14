@@ -41,6 +41,8 @@ interface SetupIds {
   teeIdBySlug: Map<string, { id: string; courseId: string }>;
   matchIdsByDay: Map<1 | 2 | 3, { id: string; matchNumber: number }[]>;
   sideIdByMatchAndCode: Map<string, string>; // `${matchId}:${code}`
+  /** Sorted by sort_order — reused by lockTeams() to avoid a duplicate players query. */
+  playersSorted: { id: string; team_id: string | null }[];
 }
 
 async function resolveSetupIds(): Promise<SetupIds> {
@@ -56,7 +58,7 @@ async function resolveSetupIds(): Promise<SetupIds> {
   ] = await withRetry(() => Promise.all([
     sb.from("tournaments").select("id, teams_locked"),
     sb.from("teams").select("id, code"),
-    sb.from("players").select("id, slug, team_id"),
+    sb.from("players").select("id, slug, team_id, sort_order").order("sort_order"),
     sb.from("rounds").select("id, day_number, course_id"),
     sb.from("tees").select("id, slug, course_id"),
     sb.from("matches").select("id, slug, round_id, match_number"),
@@ -102,6 +104,7 @@ async function resolveSetupIds(): Promise<SetupIds> {
     teeIdBySlug,
     matchIdsByDay,
     sideIdByMatchAndCode,
+    playersSorted: (players ?? []).map((p: any) => ({ id: p.id as string, team_id: p.team_id as string | null })),
   };
 }
 
@@ -192,13 +195,10 @@ export async function lockTeams() {
   requireTeamsEditor();
   const ids = await resolveSetupIds();
   const sb = supabaseAdmin();
-  const { data: players, error } = await sb
-    .from("players").select("id, team_id, sort_order").order("sort_order");
-  if (error) throw error;
   const euId = ids.teamIdByCode.get("EU");
   const usaId = ids.teamIdByCode.get("USA");
-  const euRoster = (players ?? []).filter((p: any) => p.team_id === euId);
-  const usaRoster = (players ?? []).filter((p: any) => p.team_id === usaId);
+  const euRoster = ids.playersSorted.filter((p) => p.team_id === euId);
+  const usaRoster = ids.playersSorted.filter((p) => p.team_id === usaId);
   if (euRoster.length !== 4 || usaRoster.length !== 4) {
     throw new Error(`Each team must have exactly 4 players before locking (currently EU ${euRoster.length}, USA ${usaRoster.length})`);
   }
