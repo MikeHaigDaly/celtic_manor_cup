@@ -100,66 +100,60 @@ function useDndSensors() {
 
 /* ── Team assignment ────────────────────────────────────────────────────── */
 
-function TeamAssignBoard({
-  players, locked, onMove,
-}: { players: Player[]; locked: boolean; onMove: (slug: string, team: TeamCode | null) => void }) {
-  const sensors = useDndSensors();
-  const eu = players.filter((p) => p.team === "EU");
-  const usa = players.filter((p) => p.team === "USA");
-  const pool = [...players.filter((p) => p.team == null)].sort((a, b) => a.name.localeCompare(b.name));
+/** Two small toggle buttons — at most one selected, disabled once that team has 4. */
+function TeamToggle({
+  playerTeam, locked, euCount, usaCount, onSelect,
+}: {
+  playerTeam: TeamCode | null;
+  locked: boolean;
+  euCount: number;
+  usaCount: number;
+  onSelect: (team: TeamCode | null) => void;
+}) {
+  const countFor = (t: TeamCode) => (t === "EU" ? euCount : usaCount);
 
-  function handleDragEnd(e: DragEndEvent) {
-    if (!e.over) return;
-    const team =
-      e.over.id === "team-EU" ? "EU" :
-      e.over.id === "team-USA" ? "USA" :
-      e.over.id === "team-pool" ? null : undefined;
-    if (team === undefined) return;
-    onMove(e.active.id as string, team);
-  }
+  const button = (t: TeamCode) => {
+    const selected = playerTeam === t;
+    const full = !selected && countFor(t) >= 4;
+    const disabled = locked || full;
+    return (
+      <button
+        key={t}
+        type="button"
+        disabled={disabled}
+        onClick={() => onSelect(selected ? null : t)}
+        className={clsx(
+          "px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-widest border transition",
+          selected && t === "EU" && "bg-eu text-cream border-eu",
+          selected && t === "USA" && "bg-usa text-cream border-usa",
+          !selected && !disabled && t === "EU" && "border-eu/40 text-eu hover:bg-eu/10",
+          !selected && !disabled && t === "USA" && "border-usa/40 text-usa hover:bg-usa/10",
+          !selected && disabled && "opacity-30 cursor-not-allowed border-ink/15 text-ink/30",
+        )}
+      >
+        {t}
+      </button>
+    );
+  };
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4">
-        <Slot
-          id="team-EU"
-          className="card space-y-2 p-3 min-h-[6rem] md:min-h-[16rem] border-2 border-dashed border-eu/40"
-        >
-          <p className="badge-eu mb-1">EUROPE · {eu.length}</p>
-          {eu.map((p) => <Chip key={p.id} id={p.id} label={p.name} disabled={locked} />)}
-        </Slot>
-
-        <Slot id="team-pool" className="space-y-2 md:w-56 min-h-[4rem] rounded-xl p-1">
-          {pool.length === 0 ? (
-            <p className="text-center text-[11px] text-ink/40 py-4">
-              {locked ? "" : "All golfers assigned"}
-            </p>
-          ) : (
-            <>
-              {!locked && <p className="text-center text-[11px] text-ink/40">drag left or right to assign a team</p>}
-              {pool.map((p) => <Chip key={p.id} id={p.id} label={p.name} disabled={locked} />)}
-            </>
-          )}
-        </Slot>
-
-        <Slot
-          id="team-USA"
-          className="card space-y-2 p-3 min-h-[6rem] md:min-h-[16rem] border-2 border-dashed border-usa/40"
-        >
-          <p className="badge-usa mb-1">USA · {usa.length}</p>
-          {usa.map((p) => <Chip key={p.id} id={p.id} label={p.name} disabled={locked} />)}
-        </Slot>
-      </div>
-    </DndContext>
+    <div className="flex justify-center gap-1.5">
+      {button("EU")}
+      {button("USA")}
+    </div>
   );
 }
 
 /* ── Handicaps ───────────────────────────────────────────────────────────── */
 
 function HandicapTable({
-  players, onNameChange, onHandicapChange,
+  players, locked, euCount, usaCount, onTeamChange, onNameChange, onHandicapChange,
 }: {
   players: Player[];
+  locked: boolean;
+  euCount: number;
+  usaCount: number;
+  onTeamChange: (slug: string, team: TeamCode | null) => void;
   onNameChange: (slug: string, name: string) => void;
   onHandicapChange: (slug: string, hi: number) => void;
 }) {
@@ -169,6 +163,7 @@ function HandicapTable({
         <thead className="bg-ink/5 text-ink/60 text-[11px] uppercase tracking-widest">
           <tr>
             <th className="text-left px-3 py-2">Golfer</th>
+            <th className="px-2 py-2">Team</th>
             <th className="px-2 py-2 text-right">Handicap Index</th>
           </tr>
         </thead>
@@ -186,6 +181,15 @@ function HandicapTable({
                     else e.target.value = p.name;
                   }}
                   className="w-full rounded border border-ink/15 px-2 py-1"
+                />
+              </td>
+              <td className="px-2 py-2">
+                <TeamToggle
+                  playerTeam={p.team}
+                  locked={locked}
+                  euCount={euCount}
+                  usaCount={usaCount}
+                  onSelect={(team) => onTeamChange(p.id, team)}
                 />
               </td>
               <td className="px-2 py-2 text-right">
@@ -551,13 +555,8 @@ export function TeamBoard({
       )}
 
       <section className="space-y-3">
-        <h2 className="display text-lg">Handicap Index</h2>
-        <HandicapTable players={players} onNameChange={handleNameChange} onHandicapChange={handleHandicapChange} />
-      </section>
-
-      <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="display text-lg">Teams</h2>
+          <h2 className="display text-lg">Golfers &amp; Teams</h2>
           <div className="flex items-center gap-2">
             {!locked && (euCount > 0 || usaCount > 0) && (
               <button onClick={handleResetTeams} className="btn-outline text-xs">Reset</button>
@@ -572,7 +571,15 @@ export function TeamBoard({
         {!locked && (euCount !== 4 || usaCount !== 4) && (
           <p className="text-xs text-ink/50">Each team needs exactly 4 players to lock (currently EU {euCount}, USA {usaCount}).</p>
         )}
-        <TeamAssignBoard players={players} locked={locked} onMove={handleMovePlayer} />
+        <HandicapTable
+          players={players}
+          locked={locked}
+          euCount={euCount}
+          usaCount={usaCount}
+          onTeamChange={handleMovePlayer}
+          onNameChange={handleNameChange}
+          onHandicapChange={handleHandicapChange}
+        />
       </section>
 
       <section className="space-y-3">
