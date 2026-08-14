@@ -9,6 +9,11 @@
 html, body {
   background: #F7F3EC;
   color: #0E1A1A;
+  /* A touch-drag that doesn't lock in (e.g. released before the drag
+     sensor's activation delay) falls through as a normal scroll — at the
+     top of the page that reads as a pull-to-refresh gesture on mobile
+     Chrome/Android, which reloads the page and wipes local UI state. */
+  overscroll-behavior-y: none;
 }
 
 @layer components {
