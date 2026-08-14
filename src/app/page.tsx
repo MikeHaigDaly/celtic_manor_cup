@@ -124,7 +124,7 @@ export default async function LeaderboardPage({
     <Link
       key={label}
       href={`/?${new URLSearchParams({ view, mode, sort, dir, ...params }).toString()}`}
-      className={`px-3 py-1.5 rounded-full text-xs uppercase tracking-widest ${
+      className={`px-4 py-2.5 rounded-full text-sm uppercase tracking-widest ${
         active ? "bg-ink text-cream" : "border border-ink/15 text-ink/70 hover:bg-ink/5"
       }`}
     >

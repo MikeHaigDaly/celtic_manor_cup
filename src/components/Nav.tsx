@@ -22,7 +22,7 @@ export function BottomNav() {
               <Link
                 href={it.href}
                 className={clsx(
-                  "flex flex-col items-center gap-0.5 py-2.5 text-[11px] tracking-wider uppercase",
+                  "flex flex-col items-center justify-center gap-0.5 py-3.5 min-h-[52px] text-xs tracking-wider uppercase",
                   active ? "text-ink font-semibold" : "text-ink/60",
                 )}
               >
