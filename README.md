@@ -4,7 +4,7 @@ Private live scoring web app for the annual eight-golfer Europe vs USA trip.
 
 - **Next.js 14 (App Router)** + TypeScript + Tailwind
 - **Supabase** Postgres (raw scores) + Realtime (instant leaderboard)
-- Deploy on **Vercel**
+- Deploy on **Railway**
 - Mobile-first UI, shared scorer PIN, no user accounts
 
 ## Local run
@@ -99,12 +99,16 @@ Verified 2024/25 Celtic Manor men's tee ratings are configured for all three cou
 - Match play with automatic close-out (e.g. `EU 3&2`). Match halved after 18 all-square.
 - Cup points: 1 for a win, 0.5 each for halved, 0 for a loss. 8 available. >4 wins the Cup; 4-4 = tied.
 
-## Deployment (Vercel)
+## Deployment (Railway)
 
 1. Push repo to GitHub.
-2. Import into Vercel.
-3. Add the same env vars as `.env.local`.
-4. Deploy. The scorer PIN is server-side only; scoring works from any device on the shared URL after entering the PIN at `/score`.
+2. On [railway.app](https://railway.app), New Project → Deploy from GitHub repo → select this repo.
+3. Add the same env vars as `.env.local` in the service's Variables tab.
+4. Settings → Networking → Generate Domain to get a public URL.
+5. Deploy. The scorer PIN is server-side only; scoring works from any device on the shared URL after entering the PIN at `/score`.
+
+Runs as a normal always-on Node process (`next start`) — no serverless
+per-request execution timeout, unlike Vercel's Hobby tier.
 
 ## Structure
 
