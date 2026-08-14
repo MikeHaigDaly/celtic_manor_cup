@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { requireTeamsEditor } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { withRetry } from "@/lib/retry";
 import type { TeamCode } from "@/lib/types";
 
 function validateHandicap(n: unknown): number {
@@ -52,7 +53,7 @@ async function resolveSetupIds(): Promise<SetupIds> {
     { data: tees },
     { data: matches },
     { data: sides },
-  ] = await Promise.all([
+  ] = await withRetry(() => Promise.all([
     sb.from("tournaments").select("id, teams_locked"),
     sb.from("teams").select("id, code"),
     sb.from("players").select("id, slug, team_id"),
@@ -60,7 +61,7 @@ async function resolveSetupIds(): Promise<SetupIds> {
     sb.from("tees").select("id, slug, course_id"),
     sb.from("matches").select("id, slug, round_id, match_number"),
     sb.from("match_sides").select("id, match_id, side_code"),
-  ]);
+  ]));
   const tournament = tournaments?.[0];
   if (!tournament) throw new Error("No tournament row found");
 

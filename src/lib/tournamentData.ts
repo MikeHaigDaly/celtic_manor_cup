@@ -7,6 +7,7 @@
 import { cache } from "react";
 import { teeById } from "@/config/tournament";
 import { supabaseServer } from "./supabase/server";
+import { withRetry } from "./retry";
 import type { AnyMatch, Player, RoundSetting, TeamCode, Tee } from "./types";
 
 export interface TournamentMeta {
@@ -19,10 +20,10 @@ export interface TournamentMeta {
 
 export const loadTournamentMeta = cache(async (): Promise<TournamentMeta> => {
   const sb = supabaseServer();
-  const { data, error } = await sb
+  const { data, error } = await withRetry(() => sb
     .from("tournaments")
     .select("id, slug, name, year, teams_locked")
-    .single();
+    .single());
   if (error) throw error;
   return {
     id: data.id,
@@ -35,10 +36,10 @@ export const loadTournamentMeta = cache(async (): Promise<TournamentMeta> => {
 
 export const loadPlayers = cache(async (): Promise<Player[]> => {
   const sb = supabaseServer();
-  const { data, error } = await sb
+  const { data, error } = await withRetry(() => sb
     .from("players")
     .select("slug, name, handicap_index, photo_url, sort_order, teams:team_id(code)")
-    .order("sort_order");
+    .order("sort_order"));
   if (error) throw error;
   return (data ?? []).map((r: any): Player => {
     // teams:team_id(...) comes back as an object for a to-one FK, but the
@@ -58,10 +59,10 @@ export const loadPlayers = cache(async (): Promise<Player[]> => {
 
 export const loadRoundSettings = cache(async (): Promise<RoundSetting[]> => {
   const sb = supabaseServer();
-  const { data, error } = await sb
+  const { data, error } = await withRetry(() => sb
     .from("rounds")
     .select("day_number, courses:course_id(slug), tees:selected_tee_id(slug)")
-    .order("day_number");
+    .order("day_number"));
   if (error) throw error;
   return (data ?? []).map((r: any): RoundSetting => {
     const course = Array.isArray(r.courses) ? r.courses[0] : r.courses;
@@ -158,13 +159,13 @@ export function reshapeMatchRow(row: RawMatchRow): AnyMatch {
 
 export const loadMatches = cache(async (): Promise<AnyMatch[]> => {
   const sb = supabaseServer();
-  const { data, error } = await sb
+  const { data, error } = await withRetry(() => sb
     .from("matches")
     .select(
       "slug, match_number, rounds:round_id(day_number, format, courses:course_id(slug)), " +
         "match_sides(side_code, pair_handicap_override, match_players(pairing_position, players:player_id(slug)))",
     )
-    .order("match_number");
+    .order("match_number"));
   if (error) throw error;
   return (data ?? []).map((r) => reshapeMatchRow(r as unknown as RawMatchRow));
 });
@@ -189,9 +190,9 @@ export function teeForMatchFromSettings(
 /** Each player's chosen tee per day, keyed `${playerSlug}:${dayNumber}` -> tee slug. */
 export const loadPlayerTeeSelections = cache(async (): Promise<Map<string, string>> => {
   const sb = supabaseServer();
-  const { data, error } = await sb
+  const { data, error } = await withRetry(() => sb
     .from("player_tee_selections")
-    .select("players:player_id(slug), rounds:round_id(day_number), tees:tee_id(slug)");
+    .select("players:player_id(slug), rounds:round_id(day_number), tees:tee_id(slug)"));
   if (error) throw error;
   const map = new Map<string, string>();
   for (const r of (data ?? []) as any[]) {

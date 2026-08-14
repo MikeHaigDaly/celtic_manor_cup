@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { loadMatches } from "@/lib/tournamentData";
 import { buildScoringContext } from "@/lib/data";
+import { withRetry } from "@/lib/retry";
 import { deriveMatchState } from "@/lib/scoring/derive";
 import { COURSES } from "@/config/tournament";
 import type { AnyMatch } from "@/lib/types";
@@ -18,14 +19,14 @@ interface ResolvedIds {
 async function resolveIds(): Promise<ResolvedIds> {
   const sb = supabaseAdmin();
   const [{ data: matches }, { data: players }, { data: sides }, { data: holes }, { data: mp }, { data: locks }] =
-    await Promise.all([
+    await withRetry(() => Promise.all([
       sb.from("matches").select("id, slug, signed_off"),
       sb.from("players").select("id, slug"),
       sb.from("match_sides").select("id, match_id, side_code"),
       sb.from("holes").select("id, hole_number, courses:course_id(slug)"),
       sb.from("match_players").select("match_id, player_id"),
       sb.from("match_hole_locks").select("match_id, hole_number"),
-    ]);
+    ]));
   const matchIdBySlug = new Map((matches ?? []).map((m: { slug: string; id: string }) => [m.slug, m.id]));
   const signedMatchIds = new Set(
     (matches ?? []).filter((m: { id: string; signed_off: boolean }) => m.signed_off).map((m: { id: string }) => m.id),

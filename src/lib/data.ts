@@ -4,6 +4,7 @@ import { COURSES, SCRAMBLE_ALLOWANCE } from "@/config/tournament";
 import {
   loadMatches, loadPlayers, loadPlayerTeeSelections, loadRoundSettings, teeForPlayerFromSelections,
 } from "./tournamentData";
+import { withRetry } from "./retry";
 
 /**
  * Load raw score rows from Supabase and translate them to the domain shapes
@@ -21,14 +22,14 @@ export async function loadRawScores(): Promise<{
   const [
     { data: ind, error: indErr },
     { data: scr, error: scrErr },
-  ] = await Promise.all([
+  ] = await withRetry(() => Promise.all([
     // Individual scores (Day 1 + Day 3)
     sb.from("scores")
       .select("gross_score, matches!inner(slug), players!inner(slug), holes!inner(hole_number, course_id, courses!inner(slug))"),
     // Scramble scores (Day 2)
     sb.from("scramble_scores")
       .select("gross_score, matches!inner(slug), match_sides!inner(side_code), holes!inner(hole_number)"),
-  ]);
+  ]));
   if (indErr) throw indErr;
   if (scrErr) throw scrErr;
 
@@ -52,9 +53,9 @@ export async function loadRawScores(): Promise<{
 /** Locked hole numbers for every match, keyed by match slug. */
 async function loadAllLockedHoles(): Promise<Map<string, Set<number>>> {
   const sb = supabaseServer();
-  const { data, error } = await sb
+  const { data, error } = await withRetry(() => sb
     .from("match_hole_locks")
-    .select("hole_number, matches!inner(slug)");
+    .select("hole_number, matches!inner(slug)"));
   if (error) throw error;
   const out = new Map<string, Set<number>>();
   for (const r of (data ?? []) as any[]) {
@@ -69,7 +70,8 @@ async function loadAllLockedHoles(): Promise<Map<string, Set<number>>> {
 /** Match slugs that have been signed off (finalized) — blocks further edits. */
 async function loadSignedMatches(): Promise<Set<string>> {
   const sb = supabaseServer();
-  const { data, error } = await sb.from("matches").select("slug, signed_off").eq("signed_off", true);
+  const { data, error } = await withRetry(() =>
+    sb.from("matches").select("slug, signed_off").eq("signed_off", true));
   if (error) throw error;
   return new Set((data ?? []).map((r: any) => r.slug as string));
 }
@@ -89,7 +91,7 @@ export async function buildScoringContext() {
     playerTeeSelections,
     lockedHolesByMatch,
     signedMatches,
-  ] = await Promise.all([
+  ] = await withRetry(() => Promise.all([
     loadRawScores(),
     loadPlayers(),
     loadMatches(),
@@ -97,7 +99,7 @@ export async function buildScoringContext() {
     loadPlayerTeeSelections(),
     loadAllLockedHoles(),
     loadSignedMatches(),
-  ]);
+  ]));
   return {
     players,
     matches,
