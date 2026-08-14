@@ -2,7 +2,11 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { TOURNAMENT } from "@/config/tournament";
 import { BottomNav, TopNav } from "@/components/Nav";
-import { LiveBadge } from "@/components/LiveBadge";
+// LiveBadge temporarily disabled — isolating whether its WebSocket
+// subscription (mounted globally, so active even on /teams) is behind the
+// intermittent "Server Components render" crash. Re-enable once confirmed
+// either way.
+// import { LiveBadge } from "@/components/LiveBadge";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -27,7 +31,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <div className="flex items-center gap-6">
               <TopNav />
-              <LiveBadge />
             </div>
           </div>
         </header>

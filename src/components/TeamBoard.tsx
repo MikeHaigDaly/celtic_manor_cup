@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext, useDraggable, useDroppable, useSensor, useSensors,
@@ -412,6 +412,18 @@ export function TeamBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMatches]);
 
+  // Team changes are batched (see handleMovePlayer) and no longer revert to
+  // a pre-batch snapshot on a partial failure — resync just the `team`
+  // field from confirmed server data instead, once it arrives via
+  // router.refresh(). Scoped to `team` only so it can't clobber an
+  // in-flight name/handicap edit for the same player.
+  useEffect(() => {
+    setPlayers((prev) => prev.map((p) => {
+      const fresh = initialPlayers.find((ip) => ip.id === p.id);
+      return fresh && fresh.team !== p.team ? { ...p, team: fresh.team } : p;
+    }));
+  }, [initialPlayers]);
+
   const playerName = (id: string) => players.find((p) => p.id === id)?.name ?? id;
   const euCount = players.filter((p) => p.team === "EU").length;
   const usaCount = players.filter((p) => p.team === "USA").length;
@@ -431,19 +443,34 @@ export function TeamBoard({
     });
   }
 
+  // Rapid taps (assigning several players quickly) used to fire one full
+  // mutation + full-page server refresh PER TAP — a burst of clicks could
+  // mean dozens of Supabase round trips in a couple of seconds. Instead:
+  // update the UI instantly on every tap, but only sync to the server once,
+  // ~500ms after the taps stop — only the final team per player is sent.
+  const pendingTeamChanges = useRef<Map<string, TeamCode | null>>(new Map());
+  const teamChangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   function handleMovePlayer(slug: string, team: TeamCode | null) {
     setActionError(null);
-    const prevPlayers = players;
     setPlayers((prev) => prev.map((p) => (p.id === slug ? { ...p, team } : p)));
-    startTransition(async () => {
-      try {
-        await setPlayerTeam({ playerSlug: slug, team });
-      } catch (e) {
-        setPlayers(prevPlayers);
-        setActionError(errorMessage(e));
-      }
-      router.refresh();
-    });
+    pendingTeamChanges.current.set(slug, team);
+
+    if (teamChangeTimer.current) clearTimeout(teamChangeTimer.current);
+    teamChangeTimer.current = setTimeout(() => {
+      const changes = [...pendingTeamChanges.current.entries()];
+      pendingTeamChanges.current.clear();
+      startTransition(async () => {
+        try {
+          for (const [playerSlug, playerTeam] of changes) {
+            await setPlayerTeam({ playerSlug, team: playerTeam });
+          }
+        } catch (e) {
+          setActionError(errorMessage(e));
+        }
+        router.refresh();
+      });
+    }, 500);
   }
 
   function handleNameChange(slug: string, name: string) {
