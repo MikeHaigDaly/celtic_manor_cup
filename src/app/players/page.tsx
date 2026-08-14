@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { loadRawScores, buildScoringContext } from "@/lib/data";
+import { buildScoringContext } from "@/lib/data";
 import { calculatePlayerStats } from "@/lib/scoring/playerStats";
 
-export const dynamic = "force-dynamic";
+// Cached; invalidated by revalidatePath() in the score/setup server actions.
 
 function Avatar({ name, url }: { name: string; url?: string | null }) {
   const initials = name.split(" ").map((s) => s[0]).slice(0, 2).join("");
@@ -15,8 +15,7 @@ function Avatar({ name, url }: { name: string; url?: string | null }) {
 }
 
 export default async function PlayersPage() {
-  const { individualScores, scrambleScores } = await loadRawScores();
-  const ctx = await buildScoringContext(individualScores, scrambleScores);
+  const ctx = await buildScoringContext();
   const players = ctx.players;
   const stats = new Map(players.map((p) => [p.id, calculatePlayerStats(p.id, ctx)]));
 

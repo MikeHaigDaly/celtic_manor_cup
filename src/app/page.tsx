@@ -1,5 +1,5 @@
 import { TOTAL_CUP_POINTS } from "@/config/tournament";
-import { loadRawScores, buildScoringContext } from "@/lib/data";
+import { buildScoringContext } from "@/lib/data";
 import { deriveAllMatchStates } from "@/lib/scoring/playerStats";
 import { calculateCupStandings } from "@/lib/scoring/cup";
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
@@ -112,8 +112,7 @@ export default async function LeaderboardPage({
   const sort = isSortKey(searchParams.sort) ? searchParams.sort : "toPar";
   const dir = isDir(searchParams.dir) ? searchParams.dir : "asc";
 
-  const { individualScores, scrambleScores } = await loadRawScores();
-  const ctx = await buildScoringContext(individualScores, scrambleScores);
+  const ctx = await buildScoringContext();
   // Team results (cup points, W/L/H) are always officially NET — the Net/Gross
   // toggle only affects the Individual view below, never match outcomes.
   const states = deriveAllMatchStates(ctx, "NET");

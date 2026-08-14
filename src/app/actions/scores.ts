@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { loadMatches } from "@/lib/tournamentData";
-import { loadRawScores, buildScoringContext } from "@/lib/data";
+import { buildScoringContext } from "@/lib/data";
 import { deriveMatchState } from "@/lib/scoring/derive";
 import { COURSES } from "@/config/tournament";
 import type { AnyMatch } from "@/lib/types";
@@ -79,12 +79,16 @@ function validateHole(n: unknown): number {
   }
   return n;
 }
-function revalidateForMatch(matchSlug: string, playerSlug?: string) {
+// A score change can shift the match result, which can change every
+// participant's W/L/H — not just the player who was just scored — so this
+// broadly invalidates all player profiles rather than targeting one slug.
+function revalidateForMatch(matchSlug: string) {
   revalidatePath(`/matches/${matchSlug}`);
   revalidatePath(`/score/${matchSlug}`);
   revalidatePath("/");
   revalidatePath("/players");
-  if (playerSlug) revalidatePath(`/players/${playerSlug}`);
+  revalidatePath("/players/[slug]", "page");
+  revalidatePath("/days/[n]", "page");
 }
 interface IndividualInput {
   matchSlug: string;
@@ -126,7 +130,7 @@ export async function upsertIndividualScore(input: IndividualInput) {
     { onConflict: "match_id,player_id,hole_id" },
   );
   if (error) throw error;
-  revalidateForMatch(input.matchSlug, input.playerSlug);
+  revalidateForMatch(input.matchSlug);
 }
 export async function deleteIndividualScore(input: Omit<IndividualInput, "gross">) {
   validateHole(input.holeNumber);
@@ -136,7 +140,7 @@ export async function deleteIndividualScore(input: Omit<IndividualInput, "gross"
   );
   await supabaseAdmin().from("scores").delete()
     .match({ match_id: matchId, player_id: playerId, hole_id: holeId });
-  revalidateForMatch(input.matchSlug, input.playerSlug);
+  revalidateForMatch(input.matchSlug);
 }
 interface ScrambleInput {
   matchSlug: string;
@@ -212,12 +216,11 @@ export async function setMatchSigned(input: { matchSlug: string; signed: boolean
   if (!matchId) throw new Error("Unknown match");
   if (input.signed) {
     const cfg = await matchBySlug(input.matchSlug);
-    const { individualScores, scrambleScores } = await loadRawScores();
-    const ctx = await buildScoringContext(individualScores, scrambleScores);
+    const ctx = await buildScoringContext();
     const course = COURSES.find((c) => c.id === cfg.courseId)!;
     const state = deriveMatchState({
       match: cfg, course, players: ctx.players,
-      individualScores, scrambleScores, mode: "NET",
+      individualScores: ctx.individualScores, scrambleScores: ctx.scrambleScores, mode: "NET",
       tee: (playerId: string) => ctx.getTeeForMatch(cfg, playerId),
       scrambleAllowance: ctx.scrambleAllowance,
       lockedHoles: ctx.lockedHolesByMatch.get(cfg.id) ?? null,

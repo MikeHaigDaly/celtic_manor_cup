@@ -1,17 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { teeById } from "@/config/tournament";
-import { loadRawScores, buildScoringContext } from "@/lib/data";
+import { buildScoringContext } from "@/lib/data";
 import { calculatePlayerStats } from "@/lib/scoring/playerStats";
 
-export const dynamic = "force-dynamic";
+// Cached; invalidated by revalidatePath() in the score/setup server actions.
 
 const fmt = (n: number | null) =>
   n == null ? "—" : n === 0 ? "E" : n > 0 ? `+${n}` : `${n}`;
 
 export default async function PlayerProfile({ params }: { params: { slug: string } }) {
-  const { individualScores, scrambleScores } = await loadRawScores();
-  const ctx = await buildScoringContext(individualScores, scrambleScores);
+  const ctx = await buildScoringContext();
   const player = ctx.players.find((p) => p.id === params.slug);
   if (!player) return notFound();
   const s = calculatePlayerStats(player.id, ctx);

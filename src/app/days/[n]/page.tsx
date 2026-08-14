@@ -1,10 +1,10 @@
 import { COURSES } from "@/config/tournament";
-import { loadRawScores, buildScoringContext } from "@/lib/data";
+import { buildScoringContext } from "@/lib/data";
 import { deriveAllMatchStates } from "@/lib/scoring/playerStats";
 import { MatchCard } from "@/components/MatchCard";
 import { notFound } from "next/navigation";
 
-export const dynamic = "force-dynamic";
+// Cached; invalidated by revalidatePath() in the score/setup server actions.
 
 const DAY_META: Record<1 | 2 | 3, { title: string; sub: string; courseId: string; blurb: string; points: number }> = {
   1: {
@@ -37,8 +37,7 @@ export default async function DayPage({ params }: { params: { n: string } }) {
   const meta = DAY_META[day];
   const course = COURSES.find((c) => c.id === meta.courseId)!;
 
-  const { individualScores, scrambleScores } = await loadRawScores();
-  const ctx = await buildScoringContext(individualScores, scrambleScores);
+  const ctx = await buildScoringContext();
   const states = deriveAllMatchStates(ctx, "NET");
   const playerName = (id: string) => ctx.players.find((p) => p.id === id)?.name ?? id;
   const matches = ctx.matches.filter((m) => m.dayNumber === day);

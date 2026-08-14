@@ -8,7 +8,7 @@ import {
 } from "@/lib/scoring/courseHandicap";
 import { day2PairHandicaps, individualMatchHandicaps } from "@/lib/scoring/derive";
 
-export const dynamic = "force-dynamic";
+// Cached; invalidated by revalidatePath() in the teams/setup server actions.
 
 export default async function AdminPage() {
   const [players, matches, roundSettings, teeSelections] = await Promise.all([

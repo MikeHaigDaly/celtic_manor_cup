@@ -1,5 +1,5 @@
 import { COURSES, SCRAMBLE_ALLOWANCE } from "@/config/tournament";
-import { loadRawScores, buildScoringContext } from "@/lib/data";
+import { buildScoringContext } from "@/lib/data";
 import { deriveMatchState } from "@/lib/scoring/derive";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -7,7 +7,7 @@ import type { AnyMatch, MatchState } from "@/lib/types";
 import { SignScorecardButton } from "@/components/SignScorecardButton";
 import clsx from "clsx";
 
-export const dynamic = "force-dynamic";
+// Cached; invalidated by revalidatePath() in the score/setup server actions.
 
 function names(match: AnyMatch, side: "EU" | "USA", playerName: (id: string) => string) {
   if (match.format === "DAY3_SINGLES") {
@@ -73,8 +73,7 @@ function ScorecardTable({
 }
 
 export default async function MatchDetailPage({ params }: { params: { id: string } }) {
-  const { individualScores, scrambleScores } = await loadRawScores();
-  const ctx = await buildScoringContext(individualScores, scrambleScores);
+  const ctx = await buildScoringContext();
   const match = ctx.matches.find((m) => m.id === params.id);
   if (!match) return notFound();
   const course = COURSES.find((c) => c.id === match.courseId)!;
@@ -84,7 +83,7 @@ export default async function MatchDetailPage({ params }: { params: { id: string
   // Team results are always officially NET — no gross view for match play.
   const state = deriveMatchState({
     match, course, players: ctx.players,
-    individualScores, scrambleScores, mode: "NET",
+    individualScores: ctx.individualScores, scrambleScores: ctx.scrambleScores, mode: "NET",
     tee: (playerId: string) => ctx.getTeeForMatch(match, playerId),
     scrambleAllowance: SCRAMBLE_ALLOWANCE,
     lockedHoles: ctx.lockedHolesByMatch.get(match.id) ?? null,

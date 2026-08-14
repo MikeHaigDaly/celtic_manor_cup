@@ -18,16 +18,18 @@ export async function loadRawScores(): Promise<{
 }> {
   const sb = supabaseServer();
 
-  // Individual scores (Day 1 + Day 3)
-  const { data: ind, error: indErr } = await sb
-    .from("scores")
-    .select("gross_score, matches!inner(slug), players!inner(slug), holes!inner(hole_number, course_id, courses!inner(slug))");
+  const [
+    { data: ind, error: indErr },
+    { data: scr, error: scrErr },
+  ] = await Promise.all([
+    // Individual scores (Day 1 + Day 3)
+    sb.from("scores")
+      .select("gross_score, matches!inner(slug), players!inner(slug), holes!inner(hole_number, course_id, courses!inner(slug))"),
+    // Scramble scores (Day 2)
+    sb.from("scramble_scores")
+      .select("gross_score, matches!inner(slug), match_sides!inner(side_code), holes!inner(hole_number)"),
+  ]);
   if (indErr) throw indErr;
-
-  // Scramble scores (Day 2)
-  const { data: scr, error: scrErr } = await sb
-    .from("scramble_scores")
-    .select("gross_score, matches!inner(slug), match_sides!inner(side_code), holes!inner(hole_number)");
   if (scrErr) throw scrErr;
 
   const individualScores: IndividualScore[] = (ind ?? []).map((r: any) => ({
@@ -72,12 +74,23 @@ async function loadSignedMatches(): Promise<Set<string>> {
   return new Set((data ?? []).map((r: any) => r.slug as string));
 }
 
-/** Build the derivation context for use with `deriveAllMatchStates`. */
-export async function buildScoringContext(
-  individualScores: IndividualScore[],
-  scrambleScores: ScrambleScore[],
-) {
-  const [players, matches, roundSettings, playerTeeSelections, lockedHolesByMatch, signedMatches] = await Promise.all([
+/**
+ * Build the derivation context for use with `deriveAllMatchStates`. Fetches
+ * raw scores and all setup/lock data in a single parallel wave — callers
+ * used to `await loadRawScores()` then `await buildScoringContext(...)` as
+ * two sequential round trips even though neither depends on the other.
+ */
+export async function buildScoringContext() {
+  const [
+    { individualScores, scrambleScores },
+    players,
+    matches,
+    roundSettings,
+    playerTeeSelections,
+    lockedHolesByMatch,
+    signedMatches,
+  ] = await Promise.all([
+    loadRawScores(),
     loadPlayers(),
     loadMatches(),
     loadRoundSettings(),

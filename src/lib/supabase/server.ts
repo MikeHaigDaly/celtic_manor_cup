@@ -1,21 +1,16 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 
 /**
- * Anon-key server client (RLS on) — for reads.
+ * Anon-key server client (RLS on) — for reads. Every `read_all` RLS policy
+ * in this app is `using (true)` (no per-session scoping — see the migrations),
+ * so this doesn't need `@supabase/ssr`'s cookie plumbing. Using a plain
+ * client avoids pulling in `next/headers` `cookies()`, which would otherwise
+ * force every page that reads data into fully dynamic (uncached) rendering.
  */
-export const supabaseServer = () => {
-  const cookieStore = cookies();
-  return createServerClient(
+export const supabaseServer = () =>
+  createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) { return cookieStore.get(name)?.value; },
-        set() { /* not used */ },
-        remove() { /* not used */ },
-      },
-    },
+    { auth: { persistSession: false } },
   );
-};
 
