@@ -91,7 +91,10 @@ function Slot({
 function useDndSensors() {
   return useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    // tolerance was 5px — tight enough that ordinary finger jitter during the
+    // hold-to-drag delay reads as a scroll, cancelling the drag before it
+    // starts and snapping the chip back (looks like a "reset" on a real phone).
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 12 } }),
   );
 }
 
