@@ -7,13 +7,14 @@ const items = [
   { href: "/",        label: "Leaderboard" },
   { href: "/players", label: "Players"     },
   { href: "/teams",   label: "Teams"       },
+  { href: "/info",    label: "Info"        },
 ];
 
 export function BottomNav() {
   const path = usePathname();
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-ink/10 bg-cream/90 backdrop-blur md:hidden">
-      <ul className="grid grid-cols-3">
+      <ul className="grid grid-cols-4">
         {items.map((it) => {
           const active = path === it.href || (it.href !== "/" && path.startsWith(it.href));
           return (
