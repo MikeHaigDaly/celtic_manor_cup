@@ -4,11 +4,11 @@ import { deriveAllMatchStates } from "@/lib/scoring/playerStats";
 import { calculateCupStandings } from "@/lib/scoring/cup";
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
 import { calculatePlayingHandicap } from "@/lib/scoring/courseHandicap";
-import { courseHandicapFor } from "@/lib/scoring/derive";
+import { courseHandicapFor, day2PairHandicaps } from "@/lib/scoring/derive";
 import { CupScoreboard } from "@/components/CupScoreboard";
 import { MatchCard } from "@/components/MatchCard";
 import Link from "next/link";
-import type { ScoringMode } from "@/lib/types";
+import type { Day2Match, ScoringMode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +59,51 @@ function individualStrokeRows(mode: ScoringMode, ctx: Awaited<ReturnType<typeof 
     .sort((a, b) => a.toPar - b.toPar || a.holes - b.holes);
 }
 
+interface PairRow {
+  key: string;
+  team: "EU" | "USA";
+  players: string;
+  holes: number;
+  toPar: number;
+  gross: number;
+  net: number;
+}
+
+function scramblePairRows(mode: ScoringMode, ctx: Awaited<ReturnType<typeof buildScoringContext>>): PairRow[] {
+  const day2Matches = ctx.matches.filter((m): m is Day2Match => m.dayNumber === 2);
+  const courseByMatch = new Map(ctx.matches.map((m) => [m.id, ctx.courses.find((c) => c.id === m.courseId)!]));
+  const playerById = new Map(ctx.players.map((p) => [p.id, p]));
+  const rows: PairRow[] = [];
+
+  for (const match of day2Matches) {
+    const course = courseByMatch.get(match.id)!;
+    const { euPH, usaPH } = day2PairHandicaps(
+      match,
+      ctx.players,
+      (playerId: string) => ctx.getTeeForMatch(match, playerId),
+      ctx.scrambleAllowance,
+    );
+    for (const side of ["EU", "USA"] as const) {
+      const playerIds = side === "EU" ? match.euPlayers : match.usaPlayers;
+      const players = playerIds.map((id) => playerById.get(id)?.name ?? id).join(" & ");
+      const ph = side === "EU" ? euPH : usaPH;
+      let holes = 0, gross = 0, net = 0, toPar = 0;
+      for (const s of ctx.scrambleScores) {
+        if (s.matchId !== match.id || s.side !== side) continue;
+        const hole = course.holes.find((h) => h.number === s.holeNumber);
+        if (!hole) continue;
+        const strokes = getHandicapStrokes(ph, hole.strokeIndex);
+        holes += 1;
+        gross += s.gross;
+        net += s.gross - strokes;
+        toPar += (mode === "NET" ? s.gross - strokes : s.gross) - hole.par;
+      }
+      if (holes > 0) rows.push({ key: `${match.id}-${side}`, team: side, players, holes, toPar, gross, net });
+    }
+  }
+  return rows.sort((a, b) => a.toPar - b.toPar || a.holes - b.holes);
+}
+
 export default async function LeaderboardPage({
   searchParams,
 }: { searchParams: { view?: string; mode?: string; sort?: string; dir?: string } }) {
@@ -87,7 +132,7 @@ export default async function LeaderboardPage({
     </Link>
   );
 
-  const sortRows = (rows: Row[]): Row[] =>
+  const sortRows = <T extends { holes: number; toPar: number; gross: number; net: number }>(rows: T[]): T[] =>
     [...rows].sort((a, b) => {
       const diff = (a[sort] - b[sort]) * (dir === "asc" ? 1 : -1);
       return diff !== 0 ? diff : a.holes - b.holes;
@@ -140,47 +185,113 @@ export default async function LeaderboardPage({
         </section>
       ) : (
         <section className="space-y-6">
-          {([1, 3] as const).map((day) => (
-            <div key={day}>
-              <p className="eyebrow mb-2">
-                Individual {mode === "NET" ? "Net" : "Gross"} — {day === 1 ? "Day 1" : "Day 3 · Singles"}
-              </p>
-              <div className="card overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-ink/5 text-ink/60 text-xs uppercase tracking-widest">
-                    <tr>
-                      <th className="text-left px-3 py-2">Golfer</th>
-                      <th className="px-2 py-2">Team</th>
-                      <th className="px-2 py-2 text-right">{sortHeader("holes", "Holes")}</th>
-                      <th className="px-2 py-2 text-right">{sortHeader("toPar", "To Par")}</th>
-                      <th className="px-2 py-2 text-right">{sortHeader("gross", "Gross")}</th>
-                      <th className="px-2 py-2 text-right">{sortHeader("net", "Net")}</th>
+          <div>
+            <p className="eyebrow mb-2">Individual {mode === "NET" ? "Net" : "Gross"} — Day 1</p>
+            <div className="card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-ink/5 text-ink/60 text-xs uppercase tracking-widest">
+                  <tr>
+                    <th className="text-left px-3 py-2">Golfer</th>
+                    <th className="px-2 py-2">Team</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("holes", "Holes")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("toPar", "To Par")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("gross", "Gross")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("net", "Net")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortRows(individualStrokeRows(mode, ctx, 1)).map((r) => (
+                    <tr key={r.playerId} className="border-t border-ink/5">
+                      <td className="px-3 py-2 font-medium">
+                        <Link href={`/players/${r.playerId}`} className="hover:underline">{r.name}</Link>
+                      </td>
+                      <td className="px-2 py-2">
+                        {r.team ? (
+                          <span className={r.team === "EU" ? "badge-eu" : "badge-usa"}>{r.team}</span>
+                        ) : (
+                          <span className="text-xs text-ink/30">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.holes}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.toPar > 0 ? `+${r.toPar}` : r.toPar === 0 ? "E" : r.toPar}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.gross}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.net}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {sortRows(individualStrokeRows(mode, ctx, day)).map((r) => (
-                      <tr key={r.playerId} className="border-t border-ink/5">
-                        <td className="px-3 py-2 font-medium">
-                          <Link href={`/players/${r.playerId}`} className="hover:underline">{r.name}</Link>
-                        </td>
-                        <td className="px-2 py-2">
-                          {r.team ? (
-                            <span className={r.team === "EU" ? "badge-eu" : "badge-usa"}>{r.team}</span>
-                          ) : (
-                            <span className="text-xs text-ink/30">—</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-2 text-right tabular-nums">{r.holes}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{r.toPar > 0 ? `+${r.toPar}` : r.toPar === 0 ? "E" : r.toPar}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{r.gross}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{r.net}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
+          </div>
+
+          <div>
+            <p className="eyebrow mb-2">Pairs {mode === "NET" ? "Net" : "Gross"} — Day 2 · Scramble</p>
+            <div className="card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-ink/5 text-ink/60 text-xs uppercase tracking-widest">
+                  <tr>
+                    <th className="text-left px-3 py-2">Pair</th>
+                    <th className="px-2 py-2">Team</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("holes", "Holes")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("toPar", "To Par")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("gross", "Gross")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("net", "Net")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortRows(scramblePairRows(mode, ctx)).map((r) => (
+                    <tr key={r.key} className="border-t border-ink/5">
+                      <td className="px-3 py-2 font-medium">{r.players}</td>
+                      <td className="px-2 py-2">
+                        <span className={r.team === "EU" ? "badge-eu" : "badge-usa"}>{r.team}</span>
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.holes}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.toPar > 0 ? `+${r.toPar}` : r.toPar === 0 ? "E" : r.toPar}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.gross}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.net}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <p className="eyebrow mb-2">Individual {mode === "NET" ? "Net" : "Gross"} — Day 3 · Singles</p>
+            <div className="card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-ink/5 text-ink/60 text-xs uppercase tracking-widest">
+                  <tr>
+                    <th className="text-left px-3 py-2">Golfer</th>
+                    <th className="px-2 py-2">Team</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("holes", "Holes")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("toPar", "To Par")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("gross", "Gross")}</th>
+                    <th className="px-2 py-2 text-right">{sortHeader("net", "Net")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortRows(individualStrokeRows(mode, ctx, 3)).map((r) => (
+                    <tr key={r.playerId} className="border-t border-ink/5">
+                      <td className="px-3 py-2 font-medium">
+                        <Link href={`/players/${r.playerId}`} className="hover:underline">{r.name}</Link>
+                      </td>
+                      <td className="px-2 py-2">
+                        {r.team ? (
+                          <span className={r.team === "EU" ? "badge-eu" : "badge-usa"}>{r.team}</span>
+                        ) : (
+                          <span className="text-xs text-ink/30">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.holes}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.toPar > 0 ? `+${r.toPar}` : r.toPar === 0 ? "E" : r.toPar}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.gross}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.net}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       )}
     </div>

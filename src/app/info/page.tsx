@@ -25,9 +25,9 @@ const AGENDA: AgendaDay[] = [
         event: "Round 1 — Twenty Ten",
         detail: [
           "Pairs · 2 points up for grabs",
-          "Par 3 — worst score counts",
-          "Par 4 — best score counts",
-          "Par 5 — both scores count",
+          "Par 3 — worst net score counts",
+          "Par 4 — best net score counts",
+          "Par 5 — both net scores count",
         ],
       },
       { time: "20:00", event: "Dinner — Rafters", detail: ["Twenty Ten course"] },
@@ -42,7 +42,7 @@ const AGENDA: AgendaDay[] = [
         detail: [
           "Team scramble · 2 points up for grabs",
           "Both hit, then play the better ball",
-          "One score per hole, per pair*",
+          "One net score per hole, per pair*",
         ],
       },
       { time: "16:00", event: "Rugby kickoff", detail: ["South Africa vs New Zealand"] },
@@ -57,8 +57,7 @@ const AGENDA: AgendaDay[] = [
         event: "Round 3 — Roman Road",
         detail: [
           "Singles · 4 points up for grabs",
-          "1 vs 1, hole by hole",
-          "Match can finish early once the lead can't be caught",
+          "1 vs 1 — lower net score wins the hole",
         ],
       },
       { time: "After play", event: "Trophy Ceremony" },
