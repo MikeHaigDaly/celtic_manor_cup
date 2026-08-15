@@ -1,5 +1,6 @@
 import { COURSES } from "@/config/tournament";
 import { buildScoringContext } from "@/lib/data";
+import { loadTournamentMeta } from "@/lib/tournamentData";
 import { deriveAllMatchStates } from "@/lib/scoring/playerStats";
 import { MatchCard } from "@/components/MatchCard";
 import { notFound } from "next/navigation";
@@ -37,7 +38,7 @@ export default async function DayPage({ params }: { params: { n: string } }) {
   const meta = DAY_META[day];
   const course = COURSES.find((c) => c.id === meta.courseId)!;
 
-  const ctx = await buildScoringContext();
+  const [ctx, tournamentMeta] = await Promise.all([buildScoringContext(), loadTournamentMeta()]);
   const states = deriveAllMatchStates(ctx, "NET");
   const playerName = (id: string) => ctx.players.find((p) => p.id === id)?.name ?? id;
   const matches = ctx.matches.filter((m) => m.dayNumber === day);
@@ -51,15 +52,24 @@ export default async function DayPage({ params }: { params: { n: string } }) {
         <p className="eyebrow">{course.name}</p>
         <h1 className="display text-2xl mt-1">{meta.title} · {meta.sub}</h1>
         <p className="mt-2 text-sm text-ink/70">{meta.blurb}</p>
-        <div className="mt-4 flex gap-4 text-sm">
-          <div><span className="eyebrow">Points</span><div className="font-medium">{meta.points} available</div></div>
-          <div><span className="eyebrow team-eu">Europe</span><div className="font-medium team-eu">{euPoints}</div></div>
-          <div><span className="eyebrow team-usa">USA</span><div className="font-medium team-usa">{usaPoints}</div></div>
-        </div>
+        {tournamentMeta.teamsLocked && (
+          <div className="mt-4 flex gap-4 text-sm">
+            <div><span className="eyebrow">Points</span><div className="font-medium">{meta.points} available</div></div>
+            <div><span className="eyebrow team-eu">Europe</span><div className="font-medium team-eu">{euPoints}</div></div>
+            <div><span className="eyebrow team-usa">USA</span><div className="font-medium team-usa">{usaPoints}</div></div>
+          </div>
+        )}
       </section>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {matches.map((m) => <MatchCard key={m.id} match={m} state={states.get(m.id)!} playerName={playerName} />)}
-      </div>
+      {tournamentMeta.teamsLocked ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {matches.map((m) => <MatchCard key={m.id} match={m} state={states.get(m.id)!} playerName={playerName} />)}
+        </div>
+      ) : (
+        <section className="card p-8 text-center space-y-1">
+          <p className="eyebrow">Pairings TBD</p>
+          <p className="text-sm text-ink/60">The commissioner will unlock matchups once teams are set.</p>
+        </section>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { TOTAL_CUP_POINTS } from "@/config/tournament";
 import { buildScoringContext } from "@/lib/data";
+import { loadTournamentMeta } from "@/lib/tournamentData";
 import { deriveAllMatchStates } from "@/lib/scoring/playerStats";
 import { calculateCupStandings } from "@/lib/scoring/cup";
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
@@ -112,7 +113,7 @@ export default async function LeaderboardPage({
   const sort = isSortKey(searchParams.sort) ? searchParams.sort : "toPar";
   const dir = isDir(searchParams.dir) ? searchParams.dir : "asc";
 
-  const ctx = await buildScoringContext();
+  const [ctx, tournamentMeta] = await Promise.all([buildScoringContext(), loadTournamentMeta()]);
   // Team results (cup points, W/L/H) are always officially NET — the Net/Gross
   // toggle only affects the Individual view below, never match outcomes.
   const states = deriveAllMatchStates(ctx, "NET");
@@ -167,21 +168,28 @@ export default async function LeaderboardPage({
       </div>
 
       {view === "TEAM" ? (
-        <section className="space-y-6">
-          {[1, 2, 3].map((day) => {
-            const dayMatches = ctx.matches.filter((m) => m.dayNumber === day);
-            return (
-              <div key={day}>
-                <h3 className="eyebrow mb-3">Day {day}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {dayMatches.map((m) => (
-                    <MatchCard key={m.id} match={m} state={states.get(m.id)!} playerName={playerName} />
-                  ))}
+        tournamentMeta.teamsLocked ? (
+          <section className="space-y-6">
+            {[1, 2, 3].map((day) => {
+              const dayMatches = ctx.matches.filter((m) => m.dayNumber === day);
+              return (
+                <div key={day}>
+                  <h3 className="eyebrow mb-3">Day {day}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {dayMatches.map((m) => (
+                      <MatchCard key={m.id} match={m} state={states.get(m.id)!} playerName={playerName} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </section>
+              );
+            })}
+          </section>
+        ) : (
+          <section className="card p-8 text-center space-y-1">
+            <p className="eyebrow">Pairings TBD</p>
+            <p className="text-sm text-ink/60">The commissioner will unlock matchups once teams are set.</p>
+          </section>
+        )
       ) : (
         <section className="space-y-6">
           <div>
