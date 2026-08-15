@@ -1,6 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import clsx from "clsx";
 import { setMatchSigned } from "@/app/actions/scores";
 
 export function SignScorecardButton({
@@ -27,12 +28,17 @@ export function SignScorecardButton({
     });
   }
 
+  const disabled = pending || (!signed && !canSign);
+
   return (
     <div className="flex flex-col items-center gap-1">
       <button
         onClick={toggle}
-        disabled={pending || (!signed && !canSign)}
-        className={signed ? "btn-outline" : "btn"}
+        disabled={disabled}
+        className={clsx(
+          signed ? "btn-outline" : "btn",
+          disabled && "opacity-30 cursor-not-allowed hover:opacity-30",
+        )}
       >
         {signed ? "Unlock" : "Sign scorecard"}
       </button>
