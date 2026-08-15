@@ -138,6 +138,8 @@ export interface RoundSetting {
   dayNumber: 1 | 2 | 3;
   courseId: string;
   selectedTeeId: string;
+  /** Independent of tournament-wide teams_locked — reveals this day's pairings on the leaderboard. */
+  pairingsLocked: boolean;
 }
 
 /** Configurable 2-man scramble allowance (fractions, e.g. { low: 0.35, high: 0.15 }). */

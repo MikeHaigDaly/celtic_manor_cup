@@ -107,7 +107,9 @@ export const COURSES: Course[] = [
 ];
 
 // ── Round settings (selected tee per day) ─────────────────────────────────
-export const ROUND_SETTINGS: RoundSetting[] = [
+// `pairingsLocked` is live DB state (see tournamentData.loadRoundSettings),
+// not seed config — this static list only ever feeds scripts/seed.ts.
+export const ROUND_SETTINGS: Pick<RoundSetting, "dayNumber" | "courseId" | "selectedTeeId">[] = [
   { dayNumber: 1, courseId: "twenty-ten",  selectedTeeId: "twenty-ten-yellow"  },
   { dayNumber: 2, courseId: "montgomerie", selectedTeeId: "montgomerie-yellow" },
   { dayNumber: 3, courseId: "roman-road",  selectedTeeId: "roman-road-yellow"  },

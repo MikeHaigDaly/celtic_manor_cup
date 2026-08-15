@@ -61,14 +61,19 @@ export const loadRoundSettings = cache(async (): Promise<RoundSetting[]> => {
   const sb = supabaseServer();
   const { data, error } = await withRetry(() => sb
     .from("rounds")
-    .select("day_number, courses:course_id(slug), tees:selected_tee_id(slug)")
+    .select("day_number, pairings_locked, courses:course_id(slug), tees:selected_tee_id(slug)")
     .order("day_number"));
   if (error) throw error;
   return (data ?? []).map((r: any): RoundSetting => {
     const course = Array.isArray(r.courses) ? r.courses[0] : r.courses;
     const tee = Array.isArray(r.tees) ? r.tees[0] : r.tees;
     if (!tee) throw new Error(`Round ${r.day_number} has no selected tee`);
-    return { dayNumber: r.day_number, courseId: course.slug, selectedTeeId: tee.slug };
+    return {
+      dayNumber: r.day_number,
+      courseId: course.slug,
+      selectedTeeId: tee.slug,
+      pairingsLocked: r.pairings_locked,
+    };
   });
 });
 

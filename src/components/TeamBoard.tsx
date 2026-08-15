@@ -11,7 +11,7 @@ import { COURSES } from "@/config/tournament";
 import type { AnyMatch, Day1Match, Day2Match, Day3Match, Player, RoundSetting, TeamCode } from "@/lib/types";
 import {
   setPlayerTeam, resetTeamAssignments, resetAllData, updatePlayerName, updatePlayerHandicap, setPlayerTee,
-  setDayPairings, setDaySingles, lockTeams, unlockTeams,
+  setDayPairings, setDaySingles, setDayPairingsLock, lockTeams, unlockTeams,
 } from "@/app/actions/setup";
 
 interface Props {
@@ -387,7 +387,7 @@ export function TeamBoard({
   const [, startTransition] = useTransition();
 
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
-  const [roundSettings] = useState<RoundSetting[]>(initialRoundSettings);
+  const [roundSettings, setRoundSettings] = useState<RoundSetting[]>(initialRoundSettings);
   const [teeSelections, setTeeSelections] = useState<Map<string, string>>(initialTeeSelections);
   const [locked, setLocked] = useState(initialTeamsLocked);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -424,7 +424,12 @@ export function TeamBoard({
     }));
   }, [initialPlayers]);
 
+  useEffect(() => {
+    setRoundSettings(initialRoundSettings);
+  }, [initialRoundSettings]);
+
   const playerName = (id: string) => players.find((p) => p.id === id)?.name ?? id;
+  const dayLocked = (day: 1 | 2 | 3) => roundSettings.find((r) => r.dayNumber === day)?.pairingsLocked ?? false;
   const euCount = players.filter((p) => p.team === "EU").length;
   const usaCount = players.filter((p) => p.team === "USA").length;
 
@@ -577,6 +582,21 @@ export function TeamBoard({
     });
   }
 
+  function handleTogglePairingsLock(day: 1 | 2 | 3, dayLockedNext: boolean) {
+    setActionError(null);
+    const prev = roundSettings;
+    setRoundSettings((rs) => rs.map((r) => (r.dayNumber === day ? { ...r, pairingsLocked: dayLockedNext } : r)));
+    startTransition(async () => {
+      try {
+        await setDayPairingsLock({ dayNumber: day, locked: dayLockedNext });
+      } catch (e) {
+        setRoundSettings(prev);
+        setActionError(errorMessage(e));
+      }
+      router.refresh();
+    });
+  }
+
   function handleSinglesSwap(next: Single[]) {
     setActionError(null);
     const prevSingles = singles;
@@ -642,27 +662,72 @@ export function TeamBoard({
       </section>
 
       <section className="space-y-3">
-        <h2 className="display text-lg">Day 1 pairings</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="display text-lg">Day 1 pairings</h2>
+          {locked && (
+            dayLocked(1) ? (
+              <button onClick={() => handleTogglePairingsLock(1, false)} className="btn-outline text-xs">Unlock</button>
+            ) : (
+              <button onClick={() => handleTogglePairingsLock(1, true)} className="btn text-xs">Lock &amp; publish</button>
+            )
+          )}
+        </div>
         {!locked && <p className="text-xs text-ink/50">Lock teams to arrange pairings.</p>}
+        {locked && (
+          <p className="text-xs text-ink/50">
+            {dayLocked(1) ? "Visible on the leaderboard." : "Hidden from the leaderboard until locked."}
+          </p>
+        )}
         <PairBoard
-          dayNumber={1} matches={day1Matches} pairs={day1Pairs} locked={locked}
+          dayNumber={1} matches={day1Matches} pairs={day1Pairs} locked={locked && !dayLocked(1)}
           playerName={playerName} onSwap={(team, next) => handlePairSwap(1, team, next)}
         />
       </section>
 
       <section className="space-y-3">
-        <h2 className="display text-lg">Day 2 pairings</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="display text-lg">Day 2 pairings</h2>
+          {locked && (
+            dayLocked(2) ? (
+              <button onClick={() => handleTogglePairingsLock(2, false)} className="btn-outline text-xs">Unlock</button>
+            ) : (
+              <button onClick={() => handleTogglePairingsLock(2, true)} className="btn text-xs">Lock &amp; publish</button>
+            )
+          )}
+        </div>
         {!locked && <p className="text-xs text-ink/50">Lock teams to arrange pairings.</p>}
+        {locked && (
+          <p className="text-xs text-ink/50">
+            {dayLocked(2) ? "Visible on the leaderboard." : "Hidden from the leaderboard until locked."}
+          </p>
+        )}
         <PairBoard
-          dayNumber={2} matches={day2Matches} pairs={day2Pairs} locked={locked}
+          dayNumber={2} matches={day2Matches} pairs={day2Pairs} locked={locked && !dayLocked(2)}
           playerName={playerName} onSwap={(team, next) => handlePairSwap(2, team, next)}
         />
       </section>
 
       <section className="space-y-3">
-        <h2 className="display text-lg">Day 3 singles</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="display text-lg">Day 3 singles</h2>
+          {locked && (
+            dayLocked(3) ? (
+              <button onClick={() => handleTogglePairingsLock(3, false)} className="btn-outline text-xs">Unlock</button>
+            ) : (
+              <button onClick={() => handleTogglePairingsLock(3, true)} className="btn text-xs">Lock &amp; publish</button>
+            )
+          )}
+        </div>
         {!locked && <p className="text-xs text-ink/50">Lock teams to arrange matchups.</p>}
-        <SinglesBoard matches={day3Matches} singles={singles} locked={locked} playerName={playerName} onSwap={handleSinglesSwap} />
+        {locked && (
+          <p className="text-xs text-ink/50">
+            {dayLocked(3) ? "Visible on the leaderboard." : "Hidden from the leaderboard until locked."}
+          </p>
+        )}
+        <SinglesBoard
+          matches={day3Matches} singles={singles} locked={locked && !dayLocked(3)}
+          playerName={playerName} onSwap={handleSinglesSwap}
+        />
       </section>
     </div>
   );

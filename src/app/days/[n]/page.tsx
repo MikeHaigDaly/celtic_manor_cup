@@ -1,6 +1,6 @@
 import { COURSES } from "@/config/tournament";
 import { buildScoringContext } from "@/lib/data";
-import { loadTournamentMeta } from "@/lib/tournamentData";
+import { loadTournamentMeta, loadRoundSettings } from "@/lib/tournamentData";
 import { deriveAllMatchStates } from "@/lib/scoring/playerStats";
 import { MatchCard } from "@/components/MatchCard";
 import { notFound } from "next/navigation";
@@ -38,10 +38,14 @@ export default async function DayPage({ params }: { params: { n: string } }) {
   const meta = DAY_META[day];
   const course = COURSES.find((c) => c.id === meta.courseId)!;
 
-  const [ctx, tournamentMeta] = await Promise.all([buildScoringContext(), loadTournamentMeta()]);
+  const [ctx, tournamentMeta, roundSettings] = await Promise.all([
+    buildScoringContext(), loadTournamentMeta(), loadRoundSettings(),
+  ]);
   const states = deriveAllMatchStates(ctx, "NET");
   const playerName = (id: string) => ctx.players.find((p) => p.id === id)?.name ?? id;
   const matches = ctx.matches.filter((m) => m.dayNumber === day);
+  const dayLocked = tournamentMeta.teamsLocked
+    && (roundSettings.find((r) => r.dayNumber === day)?.pairingsLocked ?? false);
 
   const euPoints = matches.reduce((s, m) => s + states.get(m.id)!.euPoints, 0);
   const usaPoints = matches.reduce((s, m) => s + states.get(m.id)!.usaPoints, 0);
@@ -52,7 +56,7 @@ export default async function DayPage({ params }: { params: { n: string } }) {
         <p className="eyebrow">{course.name}</p>
         <h1 className="display text-2xl mt-1">{meta.title} · {meta.sub}</h1>
         <p className="mt-2 text-sm text-ink/70">{meta.blurb}</p>
-        {tournamentMeta.teamsLocked && (
+        {dayLocked && (
           <div className="mt-4 flex gap-4 text-sm">
             <div><span className="eyebrow">Points</span><div className="font-medium">{meta.points} available</div></div>
             <div><span className="eyebrow team-eu">Europe</span><div className="font-medium team-eu">{euPoints}</div></div>
@@ -60,7 +64,7 @@ export default async function DayPage({ params }: { params: { n: string } }) {
           </div>
         )}
       </section>
-      {tournamentMeta.teamsLocked ? (
+      {dayLocked ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {matches.map((m) => <MatchCard key={m.id} match={m} state={states.get(m.id)!} playerName={playerName} />)}
         </div>

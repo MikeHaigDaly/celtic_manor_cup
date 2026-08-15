@@ -37,7 +37,7 @@ interface SetupIds {
   teamIdByCode: Map<TeamCode, string>;
   playerIdBySlug: Map<string, string>;
   playerTeamBySlug: Map<string, TeamCode>;
-  roundIdByDay: Map<1 | 2 | 3, { id: string; courseId: string }>;
+  roundIdByDay: Map<1 | 2 | 3, { id: string; courseId: string; pairingsLocked: boolean }>;
   teeIdBySlug: Map<string, { id: string; courseId: string }>;
   matchIdsByDay: Map<1 | 2 | 3, { id: string; matchNumber: number }[]>;
   sideIdByMatchAndCode: Map<string, string>; // `${matchId}:${code}`
@@ -59,7 +59,7 @@ async function resolveSetupIds(): Promise<SetupIds> {
     sb.from("tournaments").select("id, teams_locked"),
     sb.from("teams").select("id, code"),
     sb.from("players").select("id, slug, team_id, sort_order").order("sort_order"),
-    sb.from("rounds").select("id, day_number, course_id"),
+    sb.from("rounds").select("id, day_number, course_id, pairings_locked"),
     sb.from("tees").select("id, slug, course_id"),
     sb.from("matches").select("id, slug, round_id, match_number"),
     sb.from("match_sides").select("id, match_id, side_code"),
@@ -74,7 +74,10 @@ async function resolveSetupIds(): Promise<SetupIds> {
     (players ?? []).map((p: any) => [p.slug as string, teamCodeById.get(p.team_id) as TeamCode]),
   );
   const roundIdByDay = new Map(
-    (rounds ?? []).map((r: any) => [r.day_number as 1 | 2 | 3, { id: r.id as string, courseId: r.course_id as string }]),
+    (rounds ?? []).map((r: any) => [
+      r.day_number as 1 | 2 | 3,
+      { id: r.id as string, courseId: r.course_id as string, pairingsLocked: r.pairings_locked as boolean },
+    ]),
   );
   const teeIdBySlug = new Map(
     (tees ?? []).map((t: any) => [t.slug as string, { id: t.id as string, courseId: t.course_id as string }]),
@@ -172,6 +175,8 @@ export async function resetAllData() {
   if (e5) throw e5;
   const { error: e6 } = await sb.from("matches").update({ signed_off: false }).not("id", "is", null);
   if (e6) throw e6;
+  const { error: e7 } = await sb.from("rounds").update({ pairings_locked: false }).not("id", "is", null);
+  if (e7) throw e7;
   revalidateForSetup();
 }
 
@@ -267,6 +272,11 @@ export async function lockTeams() {
 
   const { error: updErr } = await sb.from("tournaments").update({ teams_locked: true }).eq("id", ids.tournamentId);
   if (updErr) throw updErr;
+  // Pairings were just re-derived from the roster above — any previously
+  // published day is now stale, so require an explicit re-lock per day
+  // rather than silently re-revealing old matchups.
+  const { error: unlockErr } = await sb.from("rounds").update({ pairings_locked: false }).not("id", "is", null);
+  if (unlockErr) throw unlockErr;
   revalidateForSetup();
 }
 
@@ -284,6 +294,32 @@ export async function unlockTeams() {
   // validates a full bijection against the current roster before writing.
   const { error } = await sb.from("tournaments").update({ teams_locked: false }).eq("id", ids.tournamentId);
   if (error) throw error;
+  // teamsLocked gates day pairing visibility too (see page.tsx) — this is
+  // belt-and-suspenders so a stale pairings_locked=true doesn't reappear
+  // the instant teams get re-locked without an explicit re-publish.
+  const { error: hideErr } = await sb.from("rounds").update({ pairings_locked: false }).not("id", "is", null);
+  if (hideErr) throw hideErr;
+  revalidateForSetup();
+}
+
+/**
+ * Reveals (or hides) a single day's pairings on the public leaderboard,
+ * independent of the whole-tournament teams_locked flag — lets the
+ * commissioner publish each day's matchups sequentially rather than all at
+ * once. Locking also freezes that day's PairBoard/SinglesBoard from further
+ * drag-edits (see setDayPairings/setDaySingles above).
+ */
+export async function setDayPairingsLock(input: { dayNumber: 1 | 2 | 3; locked: boolean }) {
+  requireTeamsEditor();
+  const ids = await resolveSetupIds();
+  const round = ids.roundIdByDay.get(input.dayNumber);
+  if (!round) throw new Error("Unknown round");
+  if (input.locked && !ids.teamsLocked) {
+    throw new Error("Lock teams before locking a day's pairings");
+  }
+  const { error } = await supabaseAdmin()
+    .from("rounds").update({ pairings_locked: input.locked }).eq("id", round.id);
+  if (error) throw error;
   revalidateForSetup();
 }
 
@@ -296,6 +332,9 @@ export async function setDayPairings(input: {
   const team = validateTeam(input.team);
   const ids = await resolveSetupIds();
   if (!ids.teamsLocked) throw new Error("Lock teams before setting pairings");
+  if (ids.roundIdByDay.get(input.dayNumber)?.pairingsLocked) {
+    throw new Error("Day pairings are locked — unlock to make changes");
+  }
   const matches = ids.matchIdsByDay.get(input.dayNumber);
   if (!matches || matches.length !== 2) throw new Error("Expected exactly 2 matches for this day");
 
@@ -338,6 +377,9 @@ export async function setDaySingles(input: { pairs: { euPlayerSlug: string; usaP
   requireTeamsEditor();
   const ids = await resolveSetupIds();
   if (!ids.teamsLocked) throw new Error("Lock teams before setting pairings");
+  if (ids.roundIdByDay.get(3)?.pairingsLocked) {
+    throw new Error("Day pairings are locked — unlock to make changes");
+  }
   if (input.pairs.length !== 4) throw new Error("Expected exactly 4 singles matchups");
   const matches = ids.matchIdsByDay.get(3);
   if (!matches || matches.length !== 4) throw new Error("Expected exactly 4 matches for Day 3");
