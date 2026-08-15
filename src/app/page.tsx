@@ -210,7 +210,7 @@ export default async function LeaderboardPage({
                   {sortRows(individualStrokeRows(mode, ctx, 1)).map((r) => (
                     <tr key={r.playerId} className="border-t border-ink/5">
                       <td className="px-3 py-2 font-medium">
-                        <Link href={`/players/${r.playerId}`} className="hover:underline">{r.name}</Link>
+                        <Link href={`/players/${r.playerId}?day=1`} className="hover:underline">{r.name}</Link>
                       </td>
                       <td className="px-2 py-2">
                         {r.team ? (
@@ -280,7 +280,7 @@ export default async function LeaderboardPage({
                   {sortRows(individualStrokeRows(mode, ctx, 3)).map((r) => (
                     <tr key={r.playerId} className="border-t border-ink/5">
                       <td className="px-3 py-2 font-medium">
-                        <Link href={`/players/${r.playerId}`} className="hover:underline">{r.name}</Link>
+                        <Link href={`/players/${r.playerId}?day=3`} className="hover:underline">{r.name}</Link>
                       </td>
                       <td className="px-2 py-2">
                         {r.team ? (

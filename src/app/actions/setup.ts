@@ -111,7 +111,6 @@ async function resolveSetupIds(): Promise<SetupIds> {
 function revalidateForSetup() {
   revalidatePath("/teams");
   revalidatePath("/");
-  revalidatePath("/players");
   revalidatePath("/players/[slug]", "page");
   revalidatePath("/score/[matchId]", "page");
   revalidatePath("/matches/[id]", "page");

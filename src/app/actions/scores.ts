@@ -100,7 +100,6 @@ function revalidateForMatch(matchSlug: string) {
   revalidatePath(`/matches/${matchSlug}`);
   revalidatePath(`/score/${matchSlug}`);
   revalidatePath("/");
-  revalidatePath("/players");
   revalidatePath("/players/[slug]", "page");
   revalidatePath("/days/[n]", "page");
 }
