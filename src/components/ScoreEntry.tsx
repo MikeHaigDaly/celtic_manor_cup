@@ -131,21 +131,48 @@ export function ScoreEntry({
     setHoleNumber(Math.min(18, Math.max(1, n)));
   }
 
+  // Plain save calls, decoupled from any particular optimistic UI update or
+  // router.refresh() — lets toggleHoleLock coordinate several of these into
+  // one Promise.all + a single refresh, instead of each caller firing its
+  // own independent background request.
+  async function saveIndividualScore(playerId: string, gross: number) {
+    await upsertIndividualScore({ matchSlug: match.id, playerSlug: playerId, holeNumber, gross });
+  }
+  async function saveScrambleScore(side: "EU" | "USA", gross: number) {
+    await upsertScrambleScore({ matchSlug: match.id, side, holeNumber, gross });
+  }
+
   function toggleHoleLock() {
     if (signed) return;
     const next = !isHoleLocked;
-    const prev = lockedHoles;
+    const prevLocked = lockedHoles;
+    const prevInd = ind;
+    const prevScr = scr;
 
     // Locking treats a par (the displayed default) as an entered score for
     // anyone who never touched the stepper — no need to explicitly tap par.
+    // These used to go through updateIndividual/updateScramble, each firing
+    // its own independent save + router.refresh() — for a fresh Day 1 hole
+    // that's up to 4 concurrent uncoordinated writes plus the lock itself,
+    // which measurably lost writes under real conditions (confirmed: a
+    // score and the lock itself both silently failed to persist). Now
+    // batched into one Promise.all, followed by the lock, followed by one
+    // refresh.
+    const pendingSaves: Array<() => Promise<void>> = [];
     if (next) {
       if (match.format === "DAY2_SCRAMBLE") {
         (["EU", "USA"] as const).forEach((side) => {
-          if (findScr(side) == null) updateScramble(side, hole.par);
+          if (findScr(side) == null) {
+            setScr((rows) => [...rows, { matchId: match.id, side, holeNumber, gross: hole.par }]);
+            pendingSaves.push(() => saveScrambleScore(side, hole.par));
+          }
         });
       } else {
         participantIds.forEach((pid) => {
-          if (findInd(pid) == null) updateIndividual(pid, hole.par);
+          if (findInd(pid) == null) {
+            setInd((rows) => [...rows, { matchId: match.id, playerId: pid, holeNumber, gross: hole.par }]);
+            pendingSaves.push(() => saveIndividualScore(pid, hole.par));
+          }
         });
       }
     }
@@ -163,10 +190,20 @@ export function ScoreEntry({
     // wrapper had no benefit — only this cost.
     (async () => {
       try {
+        // Sequential, not Promise.all — each save independently resolves
+        // the match's ids/players/holes server-side, so firing several at
+        // once meant up to ~20 concurrent Supabase queries all hitting the
+        // same match. Confirmed that was enough to silently drop a write
+        // (a score and the lock itself both failed to persist under
+        // concurrent load, despite no thrown error) — one at a time avoids
+        // the contention entirely.
+        for (const save of pendingSaves) await save();
         await setHoleLock({ matchSlug: match.id, holeNumber, locked: next });
       } catch (e) {
         console.error(e);
-        setLockedHoles(prev);
+        setLockedHoles(prevLocked);
+        setInd(prevInd);
+        setScr(prevScr);
       }
       router.refresh();
     })();
@@ -180,7 +217,7 @@ export function ScoreEntry({
     });
     (async () => {
       try {
-        await upsertIndividualScore({ matchSlug: match.id, playerSlug: playerId, holeNumber, gross });
+        await saveIndividualScore(playerId, gross);
       } catch (e) {
         console.error(e);
       }
@@ -196,7 +233,7 @@ export function ScoreEntry({
     });
     (async () => {
       try {
-        await upsertScrambleScore({ matchSlug: match.id, side, holeNumber, gross });
+        await saveScrambleScore(side, gross);
       } catch (e) { console.error(e); }
       router.refresh();
     })();
