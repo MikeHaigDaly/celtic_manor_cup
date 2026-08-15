@@ -79,6 +79,7 @@ export default async function MatchDetailPage({ params }: { params: { id: string
   const course = COURSES.find((c) => c.id === match.courseId)!;
   const playerName = (id: string) => ctx.players.find((p) => p.id === id)?.name ?? id;
   const signed = ctx.signedMatches.has(match.id);
+  const lockedHoles = ctx.lockedHolesByMatch.get(match.id) ?? new Set<number>();
 
   // Team results are always officially NET — no gross view for match play.
   const state = deriveMatchState({
@@ -86,7 +87,7 @@ export default async function MatchDetailPage({ params }: { params: { id: string
     individualScores: ctx.individualScores, scrambleScores: ctx.scrambleScores, mode: "NET",
     tee: (playerId: string) => ctx.getTeeForMatch(match, playerId),
     scrambleAllowance: SCRAMBLE_ALLOWANCE,
-    lockedHoles: ctx.lockedHolesByMatch.get(match.id) ?? null,
+    lockedHoles,
   });
 
   return (
@@ -123,11 +124,11 @@ export default async function MatchDetailPage({ params }: { params: { id: string
           </div>
         </div>
         <div className="mt-4 flex justify-center">
-          <SignScorecardButton matchSlug={match.id} initialSigned={signed} canSign={state.finished} />
+          <SignScorecardButton matchSlug={match.id} initialSigned={signed} canSign={lockedHoles.size === 18} />
         </div>
       </section>
 
-      <ScorecardTable matchSlug={match.id} state={state} lockedHoles={ctx.lockedHolesByMatch.get(match.id) ?? new Set()} />
+      <ScorecardTable matchSlug={match.id} state={state} lockedHoles={lockedHoles} />
     </div>
   );
 }

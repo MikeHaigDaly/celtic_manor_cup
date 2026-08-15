@@ -2,10 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { loadMatches } from "@/lib/tournamentData";
-import { buildScoringContext } from "@/lib/data";
 import { withRetry } from "@/lib/retry";
-import { deriveMatchState } from "@/lib/scoring/derive";
-import { COURSES } from "@/config/tournament";
 import type { AnyMatch } from "@/lib/types";
 interface ResolvedIds {
   matchIdBySlug: Map<string, string>;
@@ -232,18 +229,9 @@ export async function setMatchSigned(input: { matchSlug: string; signed: boolean
   const matchId = ids.matchIdBySlug.get(input.matchSlug);
   if (!matchId) throw new Error("Unknown match");
   if (input.signed) {
-    const cfg = await matchBySlug(input.matchSlug);
-    const ctx = await buildScoringContext();
-    const course = COURSES.find((c) => c.id === cfg.courseId)!;
-    const state = deriveMatchState({
-      match: cfg, course, players: ctx.players,
-      individualScores: ctx.individualScores, scrambleScores: ctx.scrambleScores, mode: "NET",
-      tee: (playerId: string) => ctx.getTeeForMatch(cfg, playerId),
-      scrambleAllowance: ctx.scrambleAllowance,
-      lockedHoles: ctx.lockedHolesByMatch.get(cfg.id) ?? null,
-    });
-    if (!state.finished) {
-      throw new Error("Match isn't decided yet — can't sign until the result is final");
+    const lockedCount = ids.lockedHolesByMatch.get(matchId)?.size ?? 0;
+    if (lockedCount !== 18) {
+      throw new Error(`All 18 holes must be locked before signing (currently ${lockedCount}/18)`);
     }
   }
   const { error } = await supabaseAdmin().from("matches").update({ signed_off: input.signed }).eq("id", matchId);

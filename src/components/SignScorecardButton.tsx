@@ -37,7 +37,7 @@ export function SignScorecardButton({
         {signed ? "Unlock" : "Sign scorecard"}
       </button>
       {!signed && !canSign && (
-        <p className="text-xs text-ink/40">Match isn&apos;t decided yet</p>
+        <p className="text-xs text-ink/40">Lock all 18 holes first</p>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
