@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AnyMatch, Course, HoleResult, IndividualScore, Player, ScrambleScore, Tee } from "@/lib/types";
 import { deriveMatchState, day2PairHandicaps, individualMatchHandicaps } from "@/lib/scoring/derive";
@@ -80,7 +80,6 @@ export function ScoreEntry({
   initialLockedHoles, initialSigned, initialHoleNumber,
 }: Props) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
 
   // Local score maps — hydrated from props (server truth), used for optimistic UI.
   const [ind, setInd] = useState<IndividualScore[]>(individualScores);
@@ -156,7 +155,13 @@ export function ScoreEntry({
       if (next) copy.add(holeNumber); else copy.delete(holeNumber);
       return copy;
     });
-    startTransition(async () => {
+    // Not wrapped in startTransition — on iOS Safari/Chrome, tapping a nav
+    // link while a startTransition-wrapped update was still resolving in
+    // the background silently swallowed the tap (confirmed: navigation
+    // worked once the transition had time to settle, failed immediately
+    // after). Nothing here reads the transition's isPending flag, so the
+    // wrapper had no benefit — only this cost.
+    (async () => {
       try {
         await setHoleLock({ matchSlug: match.id, holeNumber, locked: next });
       } catch (e) {
@@ -164,28 +169,23 @@ export function ScoreEntry({
         setLockedHoles(prev);
       }
       router.refresh();
-    });
+    })();
   }
 
   function updateIndividual(playerId: string, gross: number) {
     if (isEditingBlocked) return;
-    // Optimistic update must happen OUTSIDE startTransition — React holds
-    // back rendering everything inside a transition until the whole thing
-    // (including the async action + router.refresh() below) settles, so
-    // putting it inside made every tap feel like it took as long as a full
-    // page refresh instead of updating instantly.
     setInd((rows) => {
       const other = rows.filter((r) => !(r.matchId === match.id && r.playerId === playerId && r.holeNumber === holeNumber));
       return [...other, { matchId: match.id, playerId, holeNumber, gross }];
     });
-    startTransition(async () => {
+    (async () => {
       try {
         await upsertIndividualScore({ matchSlug: match.id, playerSlug: playerId, holeNumber, gross });
       } catch (e) {
         console.error(e);
       }
       router.refresh();
-    });
+    })();
   }
 
   function updateScramble(side: "EU" | "USA", gross: number) {
@@ -194,12 +194,12 @@ export function ScoreEntry({
       const other = rows.filter((r) => !(r.matchId === match.id && r.side === side && r.holeNumber === holeNumber));
       return [...other, { matchId: match.id, side, holeNumber, gross }];
     });
-    startTransition(async () => {
+    (async () => {
       try {
         await upsertScrambleScore({ matchSlug: match.id, side, holeNumber, gross });
       } catch (e) { console.error(e); }
       router.refresh();
-    });
+    })();
   }
 
   const holeResult = state.holeResults[holeNumber - 1];
