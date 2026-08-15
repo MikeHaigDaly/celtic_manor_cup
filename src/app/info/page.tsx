@@ -121,7 +121,18 @@ export default function InfoPage() {
                   <tbody>
                     {day.rows.map((row, i) => (
                       <tr key={i} className="border-t border-ink/5">
-                        <td className="px-3 py-2 pt-2.5 whitespace-nowrap tabular-nums align-top">{row.time}</td>
+                        <td className="px-3 py-2 pt-2.5 whitespace-nowrap tabular-nums align-top">
+                          {row.time.includes(" & ") ? (
+                            row.time.split(" & ").map((t, j, arr) => (
+                              <div key={j} className="leading-snug">
+                                {t}
+                                {j < arr.length - 1 && <div className="text-ink/40">&amp;</div>}
+                              </div>
+                            ))
+                          ) : (
+                            row.time
+                          )}
+                        </td>
                         <td className="px-2 py-2 pt-2.5 font-medium align-top">{row.event}</td>
                         <td className="px-3 py-2 text-ink/60 align-top">
                           {row.detail?.map((line, j) => (
