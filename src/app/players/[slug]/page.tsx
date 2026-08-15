@@ -98,7 +98,7 @@ export default async function PlayerScorecard({
       (s) => s.matchId === match.id && s.playerId === player.id && s.holeNumber === holeNumber,
     )?.gross ?? null;
 
-  let grossTotal = 0, grossHoles = 0, netTotal = 0, parTotal = 0;
+  let grossTotal = 0, grossHoles = 0, parTotal = 0;
 
   const rows = holes.map((hole) => {
     const gross = individualScoreFor(hole.number);
@@ -106,7 +106,6 @@ export default async function PlayerScorecard({
     const net = gross == null ? null : gross - strokes;
     if (gross != null) {
       grossTotal += gross;
-      netTotal += net!;
       parTotal += hole.par;
       grossHoles += 1;
     }
@@ -115,7 +114,7 @@ export default async function PlayerScorecard({
     return { hole, gross, net, winner: hr.winner, locked };
   });
 
-  const toPar = grossHoles > 0 ? netTotal - parTotal : null;
+  const toPar = grossHoles > 0 ? grossTotal - parTotal : null;
 
   return (
     <div className="space-y-6">
@@ -180,7 +179,7 @@ export default async function PlayerScorecard({
           <p className="display text-lg mt-1">{grossHoles > 0 ? grossTotal : "—"}</p>
         </div>
         <div className="card p-3 text-center">
-          <p className="eyebrow">Net to par</p>
+          <p className="eyebrow">Gross to par</p>
           <p className="display text-lg mt-1">{fmt(toPar)}</p>
         </div>
       </section>
