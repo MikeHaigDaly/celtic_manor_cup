@@ -7,7 +7,6 @@ import { BottomNav, TopNav } from "@/components/Nav";
 // intermittent "Server Components render" crash. Re-enable once confirmed
 // either way.
 // import { LiveBadge } from "@/components/LiveBadge";
-import Link from "next/link";
 
 export const metadata: Metadata = {
   title: `${TOURNAMENT.name} · ${TOURNAMENT.subtitle}`,
@@ -23,15 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen font-sans antialiased pb-20 md:pb-0">
-        <header className="border-b border-ink/10 bg-cream/80 backdrop-blur sticky top-0 z-30">
-          <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-            <Link href="/" className="flex items-baseline gap-2">
-              <span className="display text-lg md:text-xl">{TOURNAMENT.name}</span>
-              <span className="hidden md:inline eyebrow">{TOURNAMENT.year}</span>
-            </Link>
-            <div className="flex items-center gap-6">
-              <TopNav />
-            </div>
+        <header className="hidden md:block border-b border-ink/10 bg-cream/80 backdrop-blur sticky top-0 z-30">
+          <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-end">
+            <TopNav />
           </div>
         </header>
 

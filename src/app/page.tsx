@@ -109,7 +109,7 @@ export default async function LeaderboardPage({
   searchParams,
 }: { searchParams: { view?: string; mode?: string; sort?: string; dir?: string } }) {
   const view = isView(searchParams.view) ? searchParams.view : "TEAM";
-  const mode = isMode(searchParams.mode) ? searchParams.mode : "NET";
+  const mode = isMode(searchParams.mode) ? searchParams.mode : "GROSS";
   const sort = isSortKey(searchParams.sort) ? searchParams.sort : "toPar";
   const dir = isDir(searchParams.dir) ? searchParams.dir : "asc";
 
@@ -128,6 +128,18 @@ export default async function LeaderboardPage({
       href={`/?${new URLSearchParams({ view, mode, sort, dir, ...params }).toString()}`}
       className={`px-4 py-2.5 rounded-full text-sm uppercase tracking-widest ${
         active ? "bg-ink text-cream" : "border border-ink/15 text-ink/70 hover:bg-ink/5"
+      }`}
+    >
+      {label}
+    </Link>
+  );
+
+  const modeToggleOption = (label: string, value: "NET" | "GROSS") => (
+    <Link
+      key={value}
+      href={`/?${new URLSearchParams({ view, sort, dir, mode: value }).toString()}`}
+      className={`px-2.5 py-1 uppercase tracking-widest ${
+        mode === value ? "bg-ink text-cream" : "text-ink/60 hover:bg-ink/5"
       }`}
     >
       {label}
@@ -157,15 +169,16 @@ export default async function LeaderboardPage({
     <div className="space-y-6">
       <CupScoreboard standings={standings} />
 
-      <div className="flex flex-wrap gap-2">
-        {tab("Team", { view: "TEAM" }, view === "TEAM")}
-        {tab("Individual", { view: "INDIVIDUAL" }, view === "INDIVIDUAL")}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-2">
+          {tab("Team", { view: "TEAM" }, view === "TEAM")}
+          {tab("Individual", { view: "INDIVIDUAL" }, view === "INDIVIDUAL")}
+        </div>
         {view === "INDIVIDUAL" && (
-          <>
-            <span className="mx-2 text-ink/20">·</span>
-            {tab("Net", { mode: "NET" }, mode === "NET")}
-            {tab("Gross", { mode: "GROSS" }, mode === "GROSS")}
-          </>
+          <div className="flex shrink-0 rounded-full border border-ink/15 text-xs overflow-hidden">
+            {modeToggleOption("Net", "NET")}
+            {modeToggleOption("Gross", "GROSS")}
+          </div>
         )}
       </div>
 
