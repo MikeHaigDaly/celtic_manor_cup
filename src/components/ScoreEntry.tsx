@@ -169,12 +169,16 @@ export function ScoreEntry({
 
   function updateIndividual(playerId: string, gross: number) {
     if (isEditingBlocked) return;
+    // Optimistic update must happen OUTSIDE startTransition — React holds
+    // back rendering everything inside a transition until the whole thing
+    // (including the async action + router.refresh() below) settles, so
+    // putting it inside made every tap feel like it took as long as a full
+    // page refresh instead of updating instantly.
+    setInd((rows) => {
+      const other = rows.filter((r) => !(r.matchId === match.id && r.playerId === playerId && r.holeNumber === holeNumber));
+      return [...other, { matchId: match.id, playerId, holeNumber, gross }];
+    });
     startTransition(async () => {
-      // optimistic
-      setInd((rows) => {
-        const other = rows.filter((r) => !(r.matchId === match.id && r.playerId === playerId && r.holeNumber === holeNumber));
-        return [...other, { matchId: match.id, playerId, holeNumber, gross }];
-      });
       try {
         await upsertIndividualScore({ matchSlug: match.id, playerSlug: playerId, holeNumber, gross });
       } catch (e) {
@@ -186,11 +190,11 @@ export function ScoreEntry({
 
   function updateScramble(side: "EU" | "USA", gross: number) {
     if (isEditingBlocked) return;
+    setScr((rows) => {
+      const other = rows.filter((r) => !(r.matchId === match.id && r.side === side && r.holeNumber === holeNumber));
+      return [...other, { matchId: match.id, side, holeNumber, gross }];
+    });
     startTransition(async () => {
-      setScr((rows) => {
-        const other = rows.filter((r) => !(r.matchId === match.id && r.side === side && r.holeNumber === holeNumber));
-        return [...other, { matchId: match.id, side, holeNumber, gross }];
-      });
       try {
         await upsertScrambleScore({ matchSlug: match.id, side, holeNumber, gross });
       } catch (e) { console.error(e); }
