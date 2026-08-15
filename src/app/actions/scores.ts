@@ -16,30 +16,46 @@ interface ResolvedIds {
   lockedHolesByMatch: Map<string, Set<number>>;
   signedMatchIds: Set<string>;
 }
-async function resolveIds(): Promise<ResolvedIds> {
+/**
+ * Every write action here concerns exactly one match — this used to fetch
+ * every match, every hole across all three courses, and every lock in the
+ * whole tournament on every single hole tap. Scoped to just the match (and
+ * its one course's 18 holes) being edited instead; same ResolvedIds shape
+ * so the assert helpers below are unchanged.
+ */
+async function resolveIds(matchSlug: string): Promise<ResolvedIds> {
   const sb = supabaseAdmin();
-  const [{ data: matches }, { data: players }, { data: sides }, { data: holes }, { data: mp }, { data: locks }] =
-    await withRetry(() => Promise.all([
-      sb.from("matches").select("id, slug, signed_off"),
-      sb.from("players").select("id, slug"),
-      sb.from("match_sides").select("id, match_id, side_code"),
-      sb.from("holes").select("id, hole_number, courses:course_id(slug)"),
-      sb.from("match_players").select("match_id, player_id"),
-      sb.from("match_hole_locks").select("match_id, hole_number"),
-    ]));
-  const matchIdBySlug = new Map((matches ?? []).map((m: { slug: string; id: string }) => [m.slug, m.id]));
-  const signedMatchIds = new Set(
-    (matches ?? []).filter((m: { id: string; signed_off: boolean }) => m.signed_off).map((m: { id: string }) => m.id),
+  const { data: matchRow, error: matchErr } = await withRetry(() =>
+    sb.from("matches")
+      .select("id, signed_off, rounds:round_id(course_id, courses:course_id(slug))")
+      .eq("slug", matchSlug)
+      .maybeSingle(),
   );
+  if (matchErr) throw matchErr;
+  if (!matchRow) throw new Error(`Unknown match '${matchSlug}'`);
+  const matchId = matchRow.id as string;
+  const round = Array.isArray(matchRow.rounds) ? matchRow.rounds[0] : matchRow.rounds;
+  const course = Array.isArray(round.courses) ? round.courses[0] : round.courses;
+  const courseUuid = round.course_id as string;
+  const courseSlug = course.slug as string;
+
+  const [{ data: players }, { data: sides }, { data: holes }, { data: mp }, { data: locks }] =
+    await withRetry(() => Promise.all([
+      sb.from("players").select("id, slug"),
+      sb.from("match_sides").select("id, match_id, side_code").eq("match_id", matchId),
+      sb.from("holes").select("id, hole_number").eq("course_id", courseUuid),
+      sb.from("match_players").select("match_id, player_id").eq("match_id", matchId),
+      sb.from("match_hole_locks").select("match_id, hole_number").eq("match_id", matchId),
+    ]));
+
+  const matchIdBySlug = new Map([[matchSlug, matchId]]);
+  const signedMatchIds = new Set(matchRow.signed_off ? [matchId] : []);
   const playerIdBySlug = new Map((players ?? []).map((p: { slug: string; id: string }) => [p.slug, p.id]));
   const sideIdBy = new Map(
     (sides ?? []).map((s: { id: string; match_id: string; side_code: string }) => [`${s.match_id}:${s.side_code}`, s.id]),
   );
   const holeIdBy = new Map(
-    (holes ?? []).map((h: { id: string; hole_number: number; courses: { slug: string } | { slug: string }[] }) => {
-      const course = Array.isArray(h.courses) ? h.courses[0] : h.courses;
-      return [`${course.slug}:${h.hole_number}`, h.id];
-    }),
+    (holes ?? []).map((h: { id: string; hole_number: number }) => [`${courseSlug}:${h.hole_number}`, h.id]),
   );
   const playersInMatch = new Map<string, Set<string>>();
   for (const row of (mp ?? []) as { match_id: string; player_id: string }[]) {
@@ -124,7 +140,7 @@ async function assertIndividualWriteAllowed(
 export async function upsertIndividualScore(input: IndividualInput) {
   validateHole(input.holeNumber);
   validateGross(input.gross);
-  const ids = await resolveIds();
+  const ids = await resolveIds(input.matchSlug);
   const { matchId, playerId, holeId } = await assertIndividualWriteAllowed(input, ids);
   const { error } = await supabaseAdmin().from("scores").upsert(
     { match_id: matchId, player_id: playerId, hole_id: holeId, gross_score: input.gross },
@@ -135,7 +151,7 @@ export async function upsertIndividualScore(input: IndividualInput) {
 }
 export async function deleteIndividualScore(input: Omit<IndividualInput, "gross">) {
   validateHole(input.holeNumber);
-  const ids = await resolveIds();
+  const ids = await resolveIds(input.matchSlug);
   const { matchId, playerId, holeId } = await assertIndividualWriteAllowed(
     { ...input, gross: 1 }, ids,
   );
@@ -170,7 +186,7 @@ async function assertScrambleWriteAllowed(
 export async function upsertScrambleScore(input: ScrambleInput) {
   validateHole(input.holeNumber);
   validateGross(input.gross);
-  const ids = await resolveIds();
+  const ids = await resolveIds(input.matchSlug);
   const { matchId, sideId, holeId } = await assertScrambleWriteAllowed(input, ids);
   const { error } = await supabaseAdmin().from("scramble_scores").upsert(
     { match_id: matchId, match_side_id: sideId, hole_id: holeId, gross_score: input.gross },
@@ -181,7 +197,7 @@ export async function upsertScrambleScore(input: ScrambleInput) {
 }
 export async function deleteScrambleScore(input: Omit<ScrambleInput, "gross">) {
   validateHole(input.holeNumber);
-  const ids = await resolveIds();
+  const ids = await resolveIds(input.matchSlug);
   const { matchId, sideId, holeId } = await assertScrambleWriteAllowed(
     { ...input, gross: 1 }, ids,
   );
@@ -191,7 +207,7 @@ export async function deleteScrambleScore(input: Omit<ScrambleInput, "gross">) {
 }
 export async function setHoleLock(input: { matchSlug: string; holeNumber: number; locked: boolean }) {
   validateHole(input.holeNumber);
-  const ids = await resolveIds();
+  const ids = await resolveIds(input.matchSlug);
   const matchId = ids.matchIdBySlug.get(input.matchSlug);
   if (!matchId) throw new Error("Unknown match");
   if (ids.signedMatchIds.has(matchId)) {
@@ -212,7 +228,7 @@ export async function setHoleLock(input: { matchSlug: string; holeNumber: number
   revalidateForMatch(input.matchSlug);
 }
 export async function setMatchSigned(input: { matchSlug: string; signed: boolean }) {
-  const ids = await resolveIds();
+  const ids = await resolveIds(input.matchSlug);
   const matchId = ids.matchIdBySlug.get(input.matchSlug);
   if (!matchId) throw new Error("Unknown match");
   if (input.signed) {
