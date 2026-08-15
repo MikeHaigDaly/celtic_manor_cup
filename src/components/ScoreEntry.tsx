@@ -5,7 +5,9 @@ import type { AnyMatch, Course, HoleResult, IndividualScore, Player, ScrambleSco
 import { deriveMatchState, day2PairHandicaps, individualMatchHandicaps } from "@/lib/scoring/derive";
 import { day1RuleLabel } from "@/lib/scoring/day1";
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
+import { scoreMarkKind } from "@/lib/scoring/scoreMark";
 import { upsertIndividualScore, upsertScrambleScore, setHoleLock } from "@/app/actions/scores";
+import { ScoreMark } from "@/components/ScoreMark";
 import clsx from "clsx";
 
 interface Props {
@@ -25,15 +27,19 @@ interface Props {
 
 /** Big +/- stepper. Saves immediately on every tap — no separate save step. */
 function Stepper({
-  value, onChange, min = 1, max = 15, disabled,
-}: { value: number; onChange: (v: number) => void; min?: number; max?: number; disabled?: boolean }) {
+  value, onChange, min = 1, max = 15, disabled, par,
+}: { value: number; onChange: (v: number) => void; min?: number; max?: number; disabled?: boolean; par: number }) {
   return (
     <div className="flex items-center gap-3">
       <button
         type="button" onClick={() => onChange(Math.max(min, value - 1))} aria-label="decrement" disabled={disabled}
         className={clsx("stepper-btn", disabled && "opacity-30 cursor-not-allowed active:scale-100")}
       >−</button>
-      <div className="display text-4xl w-14 text-center tabular-nums">{value}</div>
+      <div className="w-14 flex justify-center">
+        <ScoreMark kind={scoreMarkKind(value, par)} size="lg">
+          <span className="display text-4xl tabular-nums">{value}</span>
+        </ScoreMark>
+      </div>
       <button
         type="button" onClick={() => onChange(Math.min(max, value + 1))} aria-label="increment" disabled={disabled}
         className={clsx("stepper-btn", disabled && "opacity-30 cursor-not-allowed active:scale-100")}
@@ -316,7 +322,7 @@ export function ScoreEntry({
                     </p>
                   </div>
                   <div className="flex flex-col items-center gap-1">
-                    <Stepper value={val} onChange={(v) => updateScramble(side, v)} disabled={isEditingBlocked} />
+                    <Stepper value={val} onChange={(v) => updateScramble(side, v)} disabled={isEditingBlocked} par={hole.par} />
                     <p className="text-xs text-ink/60 tabular-nums">
                       NET <span className="font-semibold text-ink">{val - strokes}</span>
                     </p>
@@ -355,7 +361,7 @@ export function ScoreEntry({
                           </p>
                         </div>
                         <div className="flex flex-col items-center gap-1">
-                          <Stepper value={val} onChange={(v) => updateIndividual(pid, v)} disabled={isEditingBlocked} />
+                          <Stepper value={val} onChange={(v) => updateIndividual(pid, v)} disabled={isEditingBlocked} par={hole.par} />
                           <p className="text-xs text-ink/60 tabular-nums">
                             NET <span className="font-semibold text-ink">{val - strokes}</span>
                           </p>

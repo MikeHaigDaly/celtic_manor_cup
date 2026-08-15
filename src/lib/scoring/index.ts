@@ -7,4 +7,5 @@ export * from "./matchState";
 export * from "./cup";
 export * from "./derive";
 export * from "./playerStats";
+export * from "./scoreMark";
 

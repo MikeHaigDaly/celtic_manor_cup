@@ -5,6 +5,8 @@ import { COURSES, SCRAMBLE_ALLOWANCE } from "@/config/tournament";
 import { buildScoringContext } from "@/lib/data";
 import { deriveMatchState, individualMatchHandicaps } from "@/lib/scoring/derive";
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
+import { scoreMarkKind } from "@/lib/scoring/scoreMark";
+import { ScoreMark } from "@/components/ScoreMark";
 import type { AnyMatch } from "@/lib/types";
 
 // Cached; invalidated by revalidatePath() in the score/setup server actions.
@@ -202,7 +204,9 @@ export default async function PlayerScorecard({
                 <td className="px-2 py-2 tabular-nums">{r.hole.number}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{r.hole.par}</td>
                 <td className="px-2 py-2 text-right tabular-nums text-ink/60">{r.hole.strokeIndex}</td>
-                <td className="px-2 py-2 text-right tabular-nums">{r.gross ?? "—"}</td>
+                <td className="px-2 py-2 text-right tabular-nums">
+                  <ScoreMark kind={scoreMarkKind(r.gross, r.hole.par)}>{r.gross ?? "—"}</ScoreMark>
+                </td>
                 <td className="px-2 py-2 text-right tabular-nums text-ink/60">{r.net ?? "—"}</td>
                 <td className={clsx(
                   "px-2 py-2 text-right eyebrow",
