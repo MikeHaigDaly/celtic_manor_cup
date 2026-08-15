@@ -10,7 +10,7 @@ import clsx from "clsx";
 import { COURSES } from "@/config/tournament";
 import type { AnyMatch, Day1Match, Day2Match, Day3Match, Player, RoundSetting, TeamCode } from "@/lib/types";
 import {
-  setPlayerTeam, resetTeamAssignments, updatePlayerName, updatePlayerHandicap, setPlayerTee,
+  setPlayerTeam, resetTeamAssignments, resetAllData, updatePlayerName, updatePlayerHandicap, setPlayerTee,
   setDayPairings, setDaySingles, lockTeams, unlockTeams,
 } from "@/app/actions/setup";
 
@@ -443,6 +443,25 @@ export function TeamBoard({
     });
   }
 
+  function handleFullReset() {
+    const ok = window.confirm(
+      "This wipes EVERYTHING for testing: unassigns all players, unlocks teams, " +
+      "and deletes every score entered anywhere in the app. This cannot be undone. Continue?",
+    );
+    if (!ok) return;
+    setActionError(null);
+    setPlayers((prev) => prev.map((p) => ({ ...p, team: null })));
+    setLocked(false);
+    startTransition(async () => {
+      try {
+        await resetAllData();
+      } catch (e) {
+        setActionError(errorMessage(e));
+      }
+      router.refresh();
+    });
+  }
+
   // Rapid taps (assigning several players quickly) used to fire one full
   // mutation + full-page server refresh PER TAP — a burst of clicks could
   // mean dozens of Supabase round trips in a couple of seconds. Instead:
@@ -593,6 +612,13 @@ export function TeamBoard({
             ) : (
               <button onClick={handleLock} className="btn text-xs">Lock in teams</button>
             )}
+            <button
+              onClick={handleFullReset}
+              className="btn-outline text-xs border-red-300 text-red-700 hover:bg-red-50"
+              title="Wipes teams, pairings, and every score — for testing before the real event"
+            >
+              Full Reset
+            </button>
           </div>
         </div>
         {!locked && (euCount !== 4 || usaCount !== 4) && (

@@ -151,6 +151,31 @@ export async function resetTeamAssignments() {
   revalidateForSetup();
 }
 
+/**
+ * Full wipe for testing before the real event: unassigns every player,
+ * unlocks teams, and clears every score, scramble score, hole lock, and
+ * signed-off flag. Unlike resetTeamAssignments() this works even while
+ * teams are locked, and touches match play data too.
+ */
+export async function resetAllData() {
+  requireTeamsEditor();
+  const ids = await resolveSetupIds();
+  const sb = supabaseAdmin();
+  const { error: e1 } = await sb.from("players").update({ team_id: null }).eq("tournament_id", ids.tournamentId);
+  if (e1) throw e1;
+  const { error: e2 } = await sb.from("tournaments").update({ teams_locked: false }).eq("id", ids.tournamentId);
+  if (e2) throw e2;
+  const { error: e3 } = await sb.from("scores").delete().not("id", "is", null);
+  if (e3) throw e3;
+  const { error: e4 } = await sb.from("scramble_scores").delete().not("id", "is", null);
+  if (e4) throw e4;
+  const { error: e5 } = await sb.from("match_hole_locks").delete().not("match_id", "is", null);
+  if (e5) throw e5;
+  const { error: e6 } = await sb.from("matches").update({ signed_off: false }).not("id", "is", null);
+  if (e6) throw e6;
+  revalidateForSetup();
+}
+
 export async function updatePlayerName(input: { playerSlug: string; name: string }) {
   requireTeamsEditor();
   const name = validateName(input.name);
