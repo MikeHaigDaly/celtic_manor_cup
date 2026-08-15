@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { COURSES, SCRAMBLE_ALLOWANCE } from "@/config/tournament";
-import { buildScoringContext } from "@/lib/data";
+import { buildMatchScoringContext } from "@/lib/data";
 import { ScoreEntry } from "@/components/ScoreEntry";
 
 export const dynamic = "force-dynamic";
@@ -8,11 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function ScoreMatchPage({
   params, searchParams,
 }: { params: { matchId: string }; searchParams: { hole?: string } }) {
-  const ctx = await buildScoringContext();
-  const match = ctx.matches.find((m) => m.id === params.matchId);
-  if (!match) return notFound();
-  const lockedHoles = [...(ctx.lockedHolesByMatch.get(match.id) ?? [])];
-  const signed = ctx.signedMatches.has(match.id);
+  const ctx = await buildMatchScoringContext(params.matchId);
+  if (!ctx) return notFound();
+  const { match } = ctx;
+  const lockedHoles = [...ctx.lockedHoles];
   const course = COURSES.find((c) => c.id === match.courseId)!;
   const participantIds =
     match.format === "DAY3_SINGLES"
@@ -32,10 +31,10 @@ export default async function ScoreMatchPage({
       players={ctx.players}
       teeByPlayer={teeByPlayer}
       scrambleAllowance={SCRAMBLE_ALLOWANCE}
-      individualScores={ctx.individualScores.filter((s) => s.matchId === match.id)}
-      scrambleScores={ctx.scrambleScores.filter((s) => s.matchId === match.id)}
+      individualScores={ctx.individualScores}
+      scrambleScores={ctx.scrambleScores}
       initialLockedHoles={lockedHoles}
-      initialSigned={signed}
+      initialSigned={ctx.signed}
       initialHoleNumber={initialHoleNumber}
     />
   );

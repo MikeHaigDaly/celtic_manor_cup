@@ -170,6 +170,23 @@ export const loadMatches = cache(async (): Promise<AnyMatch[]> => {
   return (data ?? []).map((r) => reshapeMatchRow(r as unknown as RawMatchRow));
 });
 
+/** Single match by slug, plus its DB uuid (for scoping other queries) — used by the score-entry page, which only ever needs one match, not the whole tournament. */
+export async function loadMatchBySlug(slug: string): Promise<{ match: AnyMatch; uuid: string } | null> {
+  const sb = supabaseServer();
+  const { data, error } = await withRetry(() => sb
+    .from("matches")
+    .select(
+      "id, slug, match_number, rounds:round_id(day_number, format, courses:course_id(slug)), " +
+        "match_sides(side_code, pair_handicap_override, match_players(pairing_position, players:player_id(slug)))",
+    )
+    .eq("slug", slug)
+    .maybeSingle());
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as unknown as RawMatchRow & { id: string };
+  return { match: reshapeMatchRow(row), uuid: row.id };
+}
+
 /**
  * DB-driven replacement for config's `selectedTeeForMatch`. Tee structural
  * data (rating/slope/par) still comes from static COURSES — only *which*
