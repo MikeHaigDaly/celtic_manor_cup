@@ -127,7 +127,14 @@ export function ScoreEntry({
     scr.find((s) => s.matchId === match.id && s.side === side && s.holeNumber === holeNumber)?.gross;
 
   const isHoleLocked = lockedHoles.has(holeNumber);
-  const isEditingBlocked = isHoleLocked || signed;
+  // Holes must be locked in order — match state (THRU, status text) is
+  // derived by walking holes 1→18 and stopping at the first unresolved one,
+  // so scoring ahead of a gap silently freezes the display until the gap is
+  // filled. Block entry/locking past the first not-yet-locked hole so a gap
+  // can never be created in the first place.
+  const firstUnlockedHole = course.holes.find((h) => !lockedHoles.has(h.number))?.number ?? 19;
+  const isFutureHole = holeNumber > firstUnlockedHole;
+  const isEditingBlocked = isHoleLocked || signed || isFutureHole;
 
   const participantIds: string[] = match.format === "DAY2_SCRAMBLE" ? [] :
     match.format === "DAY3_SINGLES" ? [match.euPlayer, match.usaPlayer] :
@@ -275,6 +282,12 @@ export function ScoreEntry({
         </div>
       )}
 
+      {!signed && isFutureHole && (
+        <div className="rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-sm text-ink/70">
+          Lock hole {firstUnlockedHole} before scoring this hole.
+        </div>
+      )}
+
       {/* Hole selector */}
       <HoleDots holes={course.holes} holeNumber={holeNumber} holeResults={state.holeResults} onSelect={goto} />
 
@@ -294,7 +307,7 @@ export function ScoreEntry({
         </div>
         <div className="flex gap-1">
           <button onClick={() => goto(holeNumber - 1)} className="btn-outline text-xs" disabled={holeNumber <= 1}>Prev</button>
-          <button onClick={toggleHoleLock} className="btn-outline text-xs" disabled={signed}>
+          <button onClick={toggleHoleLock} className="btn-outline text-xs" disabled={signed || isFutureHole}>
             {isHoleLocked ? "Unlock" : "Lock"}
           </button>
           <button onClick={() => goto(holeNumber + 1)} className="btn-outline text-xs" disabled={holeNumber >= 18}>Next</button>
