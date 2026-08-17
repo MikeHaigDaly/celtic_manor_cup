@@ -174,14 +174,16 @@ export default async function LeaderboardPage({
         <div className="flex items-center gap-2">
           {tab("Team", { view: "TEAM" }, view === "TEAM")}
           {tab("Individual", { view: "INDIVIDUAL" }, view === "INDIVIDUAL")}
+        </div>
+        <div className="flex items-center gap-2">
+          {view === "INDIVIDUAL" && (
+            <div className="flex shrink-0 rounded-full border border-ink/15 text-xs overflow-hidden">
+              {modeToggleOption("Net", "NET")}
+              {modeToggleOption("Gross", "GROSS")}
+            </div>
+          )}
           <RefreshButton />
         </div>
-        {view === "INDIVIDUAL" && (
-          <div className="flex shrink-0 rounded-full border border-ink/15 text-xs overflow-hidden">
-            {modeToggleOption("Net", "NET")}
-            {modeToggleOption("Gross", "GROSS")}
-          </div>
-        )}
       </div>
 
       {view === "TEAM" ? (

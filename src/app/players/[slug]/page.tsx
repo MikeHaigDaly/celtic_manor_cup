@@ -163,7 +163,8 @@ export default async function PlayerScorecard({
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 mt-3">
           <div className={side === "USA" ? "text-right" : ""}>
             <p className={side === "EU" ? "badge-eu mb-1" : "badge-usa mb-1"}>{side === "EU" ? "EUROPE" : "USA"}</p>
-            <p className="font-medium leading-tight">{player.name}{partner ? ` / ${playerName(partner)}` : ""}</p>
+            <p className="font-medium leading-tight">{player.name}</p>
+            {partner && <p className="font-medium leading-tight">{playerName(partner)}</p>}
           </div>
           <div className="text-center">
             {signed && (
