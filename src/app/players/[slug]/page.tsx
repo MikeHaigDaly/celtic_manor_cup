@@ -7,6 +7,7 @@ import { deriveMatchState, individualMatchHandicaps, day2PairHandicaps } from "@
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
 import { scoreMarkKind } from "@/lib/scoring/scoreMark";
 import { ScoreMark } from "@/components/ScoreMark";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import type { AnyMatch } from "@/lib/types";
 
 // Cached; invalidated by revalidatePath() in the score/setup server actions.
@@ -47,9 +48,7 @@ export default async function PlayerScorecard({
 
   const header = (
     <section className="card p-5 flex items-center gap-4">
-      <div className="h-16 w-16 rounded-full bg-ink/10 flex items-center justify-center display text-lg shrink-0">
-        {player.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
-      </div>
+      <PlayerAvatar playerId={player.id} name={player.name} photoUrl={player.photoUrl} />
       <div className="flex-1 min-w-0">
         <p className="eyebrow">{player.team === "EU" ? "Team Europe" : player.team === "USA" ? "Team USA" : "Unassigned"}</p>
         <h1 className="display text-2xl mt-1">{player.name}</h1>
