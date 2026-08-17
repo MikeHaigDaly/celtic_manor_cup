@@ -111,9 +111,8 @@ export default async function PlayerScorecard({
       parTotal += hole.par;
       grossHoles += 1;
     }
-    const hr = state.holeResults.find((r) => r.hole.number === hole.number)!;
-    const locked = lockedHoles.has(hole.number);
-    return { hole, gross, net, winner: hr.winner, locked };
+    const holeToPar = gross == null ? null : gross - hole.par;
+    return { hole, gross, net, toPar: holeToPar };
   });
 
   const toPar = grossHoles > 0 ? grossTotal - parTotal : null;
@@ -195,7 +194,7 @@ export default async function PlayerScorecard({
               <th className="px-2 py-2 text-right">SI</th>
               <th className="px-2 py-2 text-right">Gross</th>
               <th className="px-2 py-2 text-right">Net</th>
-              <th className="px-2 py-2 text-right">Result</th>
+              <th className="px-2 py-2 text-right">+/-</th>
             </tr>
           </thead>
           <tbody>
@@ -208,13 +207,7 @@ export default async function PlayerScorecard({
                   <ScoreMark kind={scoreMarkKind(r.gross, r.hole.par)}>{r.gross ?? "—"}</ScoreMark>
                 </td>
                 <td className="px-2 py-2 text-right tabular-nums text-ink/60">{r.net ?? "—"}</td>
-                <td className={clsx(
-                  "px-2 py-2 text-right eyebrow",
-                  r.locked && r.winner === "EU" && "team-eu",
-                  r.locked && r.winner === "USA" && "team-usa",
-                )}>
-                  {!r.locked || r.winner === "PENDING" ? "" : r.winner === "HALVED" ? "½" : r.winner}
-                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-ink/60">{fmt(r.toPar)}</td>
               </tr>
             ))}
           </tbody>

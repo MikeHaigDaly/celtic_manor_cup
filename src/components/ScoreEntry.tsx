@@ -8,6 +8,7 @@ import { getHandicapStrokes } from "@/lib/scoring/handicap";
 import { scoreMarkKind } from "@/lib/scoring/scoreMark";
 import { upsertIndividualScore, upsertScrambleScore, setHoleLock } from "@/app/actions/scores";
 import { ScoreMark } from "@/components/ScoreMark";
+import Link from "next/link";
 import clsx from "clsx";
 
 interface Props {
@@ -271,9 +272,12 @@ export function ScoreEntry({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div>
-        <p className="eyebrow">Day {match.dayNumber} · Match {match.matchNumber}</p>
-        <p className="text-sm">{course.name}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow">Day {match.dayNumber} · Match {match.matchNumber}</p>
+          <p className="text-sm">{course.name}</p>
+        </div>
+        <Link href={`/matches/${match.id}`} className="btn-outline flex-shrink-0">Scorecard</Link>
       </div>
 
       {signed && (
