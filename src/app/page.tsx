@@ -63,7 +63,7 @@ function individualStrokeRows(mode: ScoringMode, ctx: Awaited<ReturnType<typeof 
 interface PairRow {
   key: string;
   team: "EU" | "USA";
-  players: string;
+  players: { id: string; name: string }[];
   holes: number;
   toPar: number;
   gross: number;
@@ -86,7 +86,7 @@ function scramblePairRows(mode: ScoringMode, ctx: Awaited<ReturnType<typeof buil
     );
     for (const side of ["EU", "USA"] as const) {
       const playerIds = side === "EU" ? match.euPlayers : match.usaPlayers;
-      const players = playerIds.map((id) => playerById.get(id)?.name ?? id).join(" & ");
+      const players = playerIds.map((id) => ({ id, name: playerById.get(id)?.name ?? id }));
       const ph = side === "EU" ? euPH : usaPH;
       let holes = 0, gross = 0, net = 0, toPar = 0;
       for (const s of ctx.scrambleScores) {
@@ -264,7 +264,13 @@ export default async function LeaderboardPage({
                 <tbody>
                   {sortRows(scramblePairRows(mode, ctx)).map((r) => (
                     <tr key={r.key} className="border-t border-ink/5">
-                      <td className="px-3 py-2 font-medium">{r.players}</td>
+                      <td className="px-3 py-3 font-medium">
+                        <div className="flex flex-col leading-tight">
+                          <Link href={`/players/${r.players[0].id}?day=2`} className="hover:underline">{r.players[0].name}</Link>
+                          <span className="text-ink/40">&amp;</span>
+                          <Link href={`/players/${r.players[1].id}?day=2`} className="hover:underline">{r.players[1].name}</Link>
+                        </div>
+                      </td>
                       <td className="px-2 py-2">
                         <span className={r.team === "EU" ? "badge-eu" : "badge-usa"}>{r.team}</span>
                       </td>
