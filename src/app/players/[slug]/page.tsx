@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import clsx from "clsx";
 import { COURSES, SCRAMBLE_ALLOWANCE } from "@/config/tournament";
 import { buildScoringContext } from "@/lib/data";
-import { deriveMatchState, individualMatchHandicaps } from "@/lib/scoring/derive";
+import { deriveMatchState, individualMatchHandicaps, day2PairHandicaps } from "@/lib/scoring/derive";
 import { getHandicapStrokes } from "@/lib/scoring/handicap";
 import { scoreMarkKind } from "@/lib/scoring/scoreMark";
 import { ScoreMark } from "@/components/ScoreMark";
@@ -14,10 +14,11 @@ import type { AnyMatch } from "@/lib/types";
 const fmt = (n: number | null) =>
   n == null ? "—" : n === 0 ? "E" : n > 0 ? `+${n}` : `${n}`;
 
-function matchForPlayerOnDay(matches: AnyMatch[], playerId: string, day: 1 | 3): AnyMatch | undefined {
+function matchForPlayerOnDay(matches: AnyMatch[], playerId: string, day: 1 | 2 | 3): AnyMatch | undefined {
   return matches.find((m) => {
     if (m.format === "DAY3_SINGLES") return day === 3 && (m.euPlayer === playerId || m.usaPlayer === playerId);
     if (m.format === "DAY1_PAR_PAIRS") return day === 1 && (m.euPlayers.includes(playerId) || m.usaPlayers.includes(playerId));
+    if (m.format === "DAY2_SCRAMBLE") return day === 2 && (m.euPlayers.includes(playerId) || m.usaPlayers.includes(playerId));
     return false;
   });
 }
@@ -30,16 +31,19 @@ export default async function PlayerScorecard({
   if (!player) return notFound();
 
   const day1Match = matchForPlayerOnDay(ctx.matches, player.id, 1);
+  const day2Match = matchForPlayerOnDay(ctx.matches, player.id, 2);
   const day3Match = matchForPlayerOnDay(ctx.matches, player.id, 3);
 
-  const requestedDay = searchParams.day === "3" ? 3 : searchParams.day === "1" ? 1 : null;
-  const day: 1 | 3 | null =
+  const requestedDay = searchParams.day === "3" ? 3 : searchParams.day === "2" ? 2 : searchParams.day === "1" ? 1 : null;
+  const day: 1 | 2 | 3 | null =
     requestedDay === 1 && day1Match ? 1 :
+    requestedDay === 2 && day2Match ? 2 :
     requestedDay === 3 && day3Match ? 3 :
     day1Match ? 1 :
+    day2Match ? 2 :
     day3Match ? 3 : null;
 
-  const match = day === 1 ? day1Match : day === 3 ? day3Match : undefined;
+  const match = day === 1 ? day1Match : day === 2 ? day2Match : day === 3 ? day3Match : undefined;
 
   const header = (
     <section className="card p-5 flex items-center gap-4">
@@ -87,24 +91,36 @@ export default async function PlayerScorecard({
     ? [playerName(side === "EU" ? match.usaPlayer : match.euPlayer)]
     : (side === "EU" ? match.usaPlayers : match.euPlayers).map(playerName);
 
-  const partner = match.format === "DAY1_PAR_PAIRS"
+  const partner = (match.format === "DAY1_PAR_PAIRS" || match.format === "DAY2_SCRAMBLE")
     ? (side === "EU" ? match.euPlayers : match.usaPlayers).find((id) => id !== player.id)
     : null;
 
   const strokesMap = individualMatchHandicaps(match, ctx.players, (playerId: string) => ctx.getTeeForMatch(match, playerId));
   const matchStrokes = strokesMap.get(player.id)?.matchStrokes ?? 0;
 
+  // Scramble scores are recorded per side, not per player — both partners on
+  // the same side see the identical scorecard.
+  const pairPH = match.format === "DAY2_SCRAMBLE"
+    ? day2PairHandicaps(match, ctx.players, (playerId: string) => ctx.getTeeForMatch(match, playerId), SCRAMBLE_ALLOWANCE)[side === "EU" ? "euPH" : "usaPH"]
+    : 0;
+
   const holes = [...course.holes].sort((a, b) => a.number - b.number);
   const individualScoreFor = (holeNumber: number) =>
     ctx.individualScores.find(
       (s) => s.matchId === match.id && s.playerId === player.id && s.holeNumber === holeNumber,
     )?.gross ?? null;
+  const scrambleScoreFor = (holeNumber: number) =>
+    ctx.scrambleScores.find(
+      (s) => s.matchId === match.id && s.side === side && s.holeNumber === holeNumber,
+    )?.gross ?? null;
 
   let grossTotal = 0, grossHoles = 0, parTotal = 0, runningToPar = 0;
 
   const rows = holes.map((hole) => {
-    const gross = individualScoreFor(hole.number);
-    const strokes = getHandicapStrokes(matchStrokes, hole.strokeIndex);
+    const gross = match.format === "DAY2_SCRAMBLE" ? scrambleScoreFor(hole.number) : individualScoreFor(hole.number);
+    const strokes = match.format === "DAY2_SCRAMBLE"
+      ? getHandicapStrokes(pairPH, hole.strokeIndex)
+      : getHandicapStrokes(matchStrokes, hole.strokeIndex);
     const net = gross == null ? null : gross - strokes;
     let cumulativeToPar: number | null = null;
     if (gross != null) {
@@ -119,24 +135,25 @@ export default async function PlayerScorecard({
 
   const toPar = grossHoles > 0 ? grossTotal - parTotal : null;
 
+  const availableDays = (
+    [[1, day1Match], [2, day2Match], [3, day3Match]] as const
+  ).filter(([, m]) => m).map(([d]) => d);
+
   return (
     <div className="space-y-6">
       {header}
 
-      {day1Match && day3Match && (
+      {availableDays.length > 1 && (
         <div className="flex gap-2">
-          <Link
-            href={`/players/${player.id}?day=1`}
-            className={clsx("card px-4 py-2 text-sm flex-1 text-center", day === 1 ? "font-semibold" : "text-ink/60")}
-          >
-            Day 1
-          </Link>
-          <Link
-            href={`/players/${player.id}?day=3`}
-            className={clsx("card px-4 py-2 text-sm flex-1 text-center", day === 3 ? "font-semibold" : "text-ink/60")}
-          >
-            Day 3
-          </Link>
+          {availableDays.map((d) => (
+            <Link
+              key={d}
+              href={`/players/${player.id}?day=${d}`}
+              className={clsx("card px-4 py-2 text-sm flex-1 text-center", day === d ? "font-semibold" : "text-ink/60")}
+            >
+              Day {d}
+            </Link>
+          ))}
         </div>
       )}
 
