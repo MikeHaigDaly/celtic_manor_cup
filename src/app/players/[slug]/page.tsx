@@ -161,7 +161,7 @@ export default async function PlayerScorecard({
           Day {match.dayNumber} · Match {match.matchNumber} · {course.name.replace("Celtic Manor — ", "")}
         </p>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 mt-3">
-          <div className={side === "USA" ? "text-right" : ""}>
+          <div>
             <p className={side === "EU" ? "badge-eu mb-1" : "badge-usa mb-1"}>{side === "EU" ? "EUROPE" : "USA"}</p>
             <p className="font-medium leading-tight">{player.name}</p>
             {partner && <p className="font-medium leading-tight">{playerName(partner)}</p>}
@@ -182,7 +182,7 @@ export default async function PlayerScorecard({
             {!state.finished && state.holesCompleted > 0 && <p className="eyebrow mt-1">THRU {state.throughHole}</p>}
             {state.finished && <p className="eyebrow mt-1">Final</p>}
           </div>
-          <div className={side === "EU" ? "text-right" : ""}>
+          <div className="text-right">
             <p className={side === "EU" ? "badge-usa mb-1" : "badge-eu mb-1"}>{side === "EU" ? "USA" : "EUROPE"}</p>
             {opponents.map((n) => <p key={n} className="font-medium leading-tight">{n}</p>)}
           </div>
