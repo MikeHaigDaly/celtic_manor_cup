@@ -8,8 +8,8 @@ export function CupScoreboard({ standings }: { standings: CupStandings }) {
     <section className="card p-6 md:p-8">
       <div className="text-center">
         <Image
-          src="/logo.png" alt={TOURNAMENT.name} width={96} height={96} priority
-          className="mx-auto rounded-full shadow-card"
+          src="/logo.png" alt={TOURNAMENT.name} width={192} height={192} priority
+          className="mx-auto"
         />
         <p className="eyebrow mt-4">{TOURNAMENT.subtitle} · {TOURNAMENT.year}</p>
         <h1 className="display text-3xl md:text-5xl mt-1">{TOURNAMENT.name}</h1>
