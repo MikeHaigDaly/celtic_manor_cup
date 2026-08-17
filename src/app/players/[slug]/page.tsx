@@ -100,19 +100,21 @@ export default async function PlayerScorecard({
       (s) => s.matchId === match.id && s.playerId === player.id && s.holeNumber === holeNumber,
     )?.gross ?? null;
 
-  let grossTotal = 0, grossHoles = 0, parTotal = 0;
+  let grossTotal = 0, grossHoles = 0, parTotal = 0, runningToPar = 0;
 
   const rows = holes.map((hole) => {
     const gross = individualScoreFor(hole.number);
     const strokes = getHandicapStrokes(matchStrokes, hole.strokeIndex);
     const net = gross == null ? null : gross - strokes;
+    let cumulativeToPar: number | null = null;
     if (gross != null) {
       grossTotal += gross;
       parTotal += hole.par;
       grossHoles += 1;
+      runningToPar += gross - hole.par;
+      cumulativeToPar = runningToPar;
     }
-    const holeToPar = gross == null ? null : gross - hole.par;
-    return { hole, gross, net, toPar: holeToPar };
+    return { hole, gross, net, toPar: cumulativeToPar };
   });
 
   const toPar = grossHoles > 0 ? grossTotal - parTotal : null;
