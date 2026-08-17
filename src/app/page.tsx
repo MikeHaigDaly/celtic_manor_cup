@@ -8,6 +8,7 @@ import { calculatePlayingHandicap } from "@/lib/scoring/courseHandicap";
 import { courseHandicapFor, day2PairHandicaps } from "@/lib/scoring/derive";
 import { CupScoreboard } from "@/components/CupScoreboard";
 import { MatchCard } from "@/components/MatchCard";
+import { RefreshButton } from "@/components/RefreshButton";
 import Link from "next/link";
 import type { Day2Match, ScoringMode } from "@/lib/types";
 
@@ -170,9 +171,10 @@ export default async function LeaderboardPage({
       <CupScoreboard standings={standings} />
 
       <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {tab("Team", { view: "TEAM" }, view === "TEAM")}
           {tab("Individual", { view: "INDIVIDUAL" }, view === "INDIVIDUAL")}
+          <RefreshButton />
         </div>
         {view === "INDIVIDUAL" && (
           <div className="flex shrink-0 rounded-full border border-ink/15 text-xs overflow-hidden">
